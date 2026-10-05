@@ -814,7 +814,7 @@ public class LyricsMatcherTests
     [Fact]
     public void Picks_the_title_and_artist_match_even_when_durations_collide()
     {
-        // Spec section 2.5: Dan 305.718 and Spoiled 306.066 are 0.35s apart.
+        // Spec section 2.5: duration alone cannot separate two songs on one album.
         // Dan is deliberately the NEARER match to the played duration (306.0),
         // so duration alone would choose the wrong song. Only the title
         // comparison can pick Spoiled, which is what makes it load-bearing.
@@ -1816,8 +1816,15 @@ public class LyricsResolverTests
         cache.Candidates.Add(new Candidate("dan.json", "AP_1872239911", DanTtml));
         cache.Candidates.Add(new Candidate("spoiled.json", "AP_1872239909", SpoiledTtml));
 
+        // The catalog durations are set so Dan is the NEARER body match to the
+        // played 306.0s, while the played title is Spoiled. Duration alone would
+        // therefore resolve to the wrong song, and only the title key can reach
+        // the asserted lyrics id. (The real pair is 305.718 vs 306.066, where
+        // duration ordering happens to agree with the right answer; that fixture
+        // could not detect a broken title comparison. Spec section 2.5 records
+        // the real measurements; this fixture perturbs them to be load-bearing.)
         var catalog = new FakeCatalog();
-        catalog.Answers["AP_1872239911"] = new TrackInfo("Dan", "Noah Kahan", TimeSpan.FromSeconds(305.718));
+        catalog.Answers["AP_1872239911"] = new TrackInfo("Dan", "Noah Kahan", TimeSpan.FromSeconds(306.0));
         catalog.Answers["AP_1872239909"] = new TrackInfo("Spoiled", "Noah Kahan", TimeSpan.FromSeconds(306.066));
 
         var resolver = new LyricsResolver(cache, catalog);

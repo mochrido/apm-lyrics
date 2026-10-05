@@ -39,7 +39,7 @@ public class LyricsMatcherTests
     [Fact]
     public void Picks_the_title_and_artist_match_even_when_durations_collide()
     {
-        // Spec section 2.5: Dan 305.718 and Spoiled 306.066 are 0.35s apart.
+        // Spec section 2.5: duration alone cannot separate two songs on one album.
         // Dan is deliberately the NEARER match to the played duration (306.0),
         // so duration alone would choose the wrong song. Only the title
         // comparison can pick Spoiled, which is what makes it load-bearing.
