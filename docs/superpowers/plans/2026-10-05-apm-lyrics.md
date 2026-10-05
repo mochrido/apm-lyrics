@@ -2659,47 +2659,49 @@ public sealed class TrayIcon : IDisposable
         Width="440" Height="520"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="True">
-    <StackPanel Margin="20" >
-        <TextBlock Text="Display mode" FontWeight="SemiBold"/>
-        <RadioButton x:Name="ModeMulti" Content="Multi-line (previous, current, next)" GroupName="mode" Margin="0,6,0,0" IsChecked="True"/>
-        <RadioButton x:Name="ModeSingle" Content="Single-line" GroupName="mode" Margin="0,4,0,12"/>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="20" >
+            <TextBlock Text="Display mode" FontWeight="SemiBold"/>
+            <RadioButton x:Name="ModeMulti" Content="Multi-line (previous, current, next)" GroupName="mode" Margin="0,6,0,0" IsChecked="True"/>
+            <RadioButton x:Name="ModeSingle" Content="Single-line" GroupName="mode" Margin="0,4,0,12"/>
 
-        <TextBlock Text="Neighbour lines (0 to 4)" FontWeight="SemiBold"/>
-        <Slider x:Name="Radius" Minimum="0" Maximum="4" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+            <TextBlock Text="Neighbour lines (0 to 4)" FontWeight="SemiBold"/>
+            <Slider x:Name="Radius" Minimum="0" Maximum="4" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
 
-        <TextBlock Text="Font family" FontWeight="SemiBold"/>
-        <ComboBox x:Name="FontFamilyPicker" Margin="0,6,0,12"/>
+            <TextBlock Text="Font family" FontWeight="SemiBold"/>
+            <ComboBox x:Name="FontFamilyPicker" Margin="0,6,0,12"/>
 
-        <TextBlock Text="Font size (10 to 96)" FontWeight="SemiBold"/>
-        <Slider x:Name="FontSizeSlider" Minimum="10" Maximum="96" TickFrequency="2" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+            <TextBlock Text="Font size (10 to 96)" FontWeight="SemiBold"/>
+            <Slider x:Name="FontSizeSlider" Minimum="10" Maximum="96" TickFrequency="2" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
 
-        <TextBlock Text="Backdrop opacity (higher is more readable)" FontWeight="SemiBold"/>
-        <Slider x:Name="Backdrop" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+            <TextBlock Text="Backdrop opacity (higher is more readable)" FontWeight="SemiBold"/>
+            <Slider x:Name="Backdrop" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
 
-        <TextBlock Text="Text colour (neighbour lines)" FontWeight="SemiBold"/>
-        <TextBox x:Name="TextColorBox" ToolTip="Colour name or #RRGGBB" Margin="0,6,0,12"/>
+            <TextBlock Text="Text colour (neighbour lines)" FontWeight="SemiBold"/>
+            <TextBox x:Name="TextColorBox" ToolTip="Colour name or #RRGGBB" Margin="0,6,0,12"/>
 
-        <TextBlock Text="Current line colour" FontWeight="SemiBold"/>
-        <TextBox x:Name="CurrentLineColorBox" ToolTip="Colour name or #RRGGBB" Margin="0,6,0,12"/>
+            <TextBlock Text="Current line colour" FontWeight="SemiBold"/>
+            <TextBox x:Name="CurrentLineColorBox" ToolTip="Colour name or #RRGGBB" Margin="0,6,0,12"/>
 
-        <TextBlock Text="Backdrop colour" FontWeight="SemiBold"/>
-        <TextBox x:Name="BackdropColorBox" ToolTip="Colour name or #RRGGBB" Margin="0,6,0,12"/>
+            <TextBlock Text="Backdrop colour" FontWeight="SemiBold"/>
+            <TextBox x:Name="BackdropColorBox" ToolTip="Colour name or #RRGGBB" Margin="0,6,0,12"/>
 
-        <TextBlock Text="Neighbour line opacity (0 to 1)" FontWeight="SemiBold"/>
-        <Slider x:Name="NeighbourOpacity" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+            <TextBlock Text="Neighbour line opacity (0 to 1)" FontWeight="SemiBold"/>
+            <Slider x:Name="NeighbourOpacity" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
 
-        <TextBlock Text="Dim the neighbouring lines" FontWeight="SemiBold"/>
-        <CheckBox x:Name="Dim" Margin="0,6,0,12"/>
+            <TextBlock Text="Dim the neighbouring lines" FontWeight="SemiBold"/>
+            <CheckBox x:Name="Dim" Margin="0,6,0,12"/>
 
-        <TextBlock Text="Click-through (the tray menu can undo this)" FontWeight="SemiBold"/>
-        <CheckBox x:Name="Through" Margin="0,6,0,16"/>
+            <TextBlock Text="Click-through (the tray menu can undo this)" FontWeight="SemiBold"/>
+            <CheckBox x:Name="Through" Margin="0,6,0,16"/>
 
-        <!-- Changes apply live (spec section 6), so a confirmation button would be a
-             dead control. This is a plain window close instead. Named CloseButton, not
-             Close: a generated field called Close shadows Window.Close() (CS0108), the
-             same collision the font-size slider avoids with FontSizeSlider. -->
-        <Button x:Name="CloseButton" Content="Close" Height="34" IsCancel="True"/>
-    </StackPanel>
+            <!-- Changes apply live (spec section 6), so a confirmation button would be a
+                 dead control. This is a plain window close instead. Named CloseButton, not
+                 Close: a generated field called Close shadows Window.Close() (CS0108), the
+                 same collision the font-size slider avoids with FontSizeSlider. -->
+            <Button x:Name="CloseButton" Content="Close" Height="34" IsCancel="True"/>
+        </StackPanel>
+    </ScrollViewer>
 </Window>
 ```
 
