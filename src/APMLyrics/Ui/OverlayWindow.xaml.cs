@@ -32,18 +32,18 @@ public partial class OverlayWindow : Window
         PrevLine.FontSize = NextLine.FontSize = settings.FontSize * 0.7;
         CurrLine.FontSize = SingleLinePanel.FontSize = settings.FontSize;
 
-        CurrLine.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(settings.CurrentLineColor));
-        PrevLine.Foreground = NextLine.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(settings.TextColor));
+        CurrLine.Foreground = new SolidColorBrush(ParseColor(settings.CurrentLineColor, Colors.White));
+        PrevLine.Foreground = NextLine.Foreground = new SolidColorBrush(ParseColor(settings.TextColor, Colors.White));
         PrevLine.Opacity = NextLine.Opacity = settings.DimNeighbours ? settings.NeighbourOpacity : 1.0;
-        SingleLinePanel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(settings.CurrentLineColor));
+        SingleLinePanel.Foreground = new SolidColorBrush(ParseColor(settings.CurrentLineColor, Colors.White));
 
-        var backdropColor = (Color)ColorConverter.ConvertFromString(settings.BackdropColor);
+        var backdropColor = ParseColor(settings.BackdropColor, Colors.Black);
         backdropColor.A = (byte)(Math.Clamp(settings.BackdropOpacity, 0, 1) * 255);
         Backdrop.Background = new SolidColorBrush(backdropColor);
 
         // The progress rule needs explicit brushes: a Rectangle with no Fill is
         // invisible, so leaving these unset would make the fill a silent no-op.
-        var lineColor = (Color)ColorConverter.ConvertFromString(settings.CurrentLineColor);
+        var lineColor = ParseColor(settings.CurrentLineColor, Colors.White);
         ProgressBar.Fill = new SolidColorBrush(lineColor);
         var trackColor = lineColor;
         trackColor.A = 60;
@@ -59,8 +59,32 @@ public partial class OverlayWindow : Window
         if (double.IsNaN(Width) || Width <= 0) Width = settings.Width;
         if (double.IsNaN(Height) || Height <= 0) Height = settings.Height;
 
+        // Restyling is not a line change: force the text to be recomputed (a
+        // neighbour-radius or display-mode edit genuinely changes what is drawn),
+        // but do not replay the spec 5.2 arrival crossfade for styling. Live
+        // apply makes this path run on every keystroke and slider tick, so
+        // animating here would pulse the current line throughout a settings edit.
         _lastIndex = -2; // force a refresh with the new styling
-        Render();
+        Render(animate: false);
+    }
+
+    /// <summary>
+    /// Parses a colour without ever throwing. ApplySettings is public and the
+    /// overlay is shared, so no settings value may kill the process; an
+    /// unrenderable string falls back to the default for that element.
+    /// </summary>
+    private static Color ParseColor(string? value, Color fallback)
+    {
+        try
+        {
+            return value is not null && ColorConverter.ConvertFromString(value) is Color color
+                ? color
+                : fallback;
+        }
+        catch (FormatException)
+        {
+            return fallback;
+        }
     }
 
     public void SetClickThrough(bool enabled) => ClickThrough.Apply(this, enabled);
@@ -117,7 +141,7 @@ public partial class OverlayWindow : Window
         Render();
     }
 
-    private void Render()
+    private void Render(bool animate = true)
     {
         if (_doc is null || _doc.Lines.Count == 0)
         {
@@ -152,8 +176,11 @@ public partial class OverlayWindow : Window
             SingleLinePanel.Text = current;
 
             // Crossfade the current line on change only; the progress fill below
-            // runs every tick and must not animate the text.
-            FadeInCurrentLine();
+            // runs every tick and must not animate the text. A styling-only
+            // refresh (ApplySettings) passes animate: false so restyling never
+            // replays this arrival animation.
+            if (animate)
+                FadeInCurrentLine();
 
             if (_settings.Mode == DisplayMode.MultiLine)
             {

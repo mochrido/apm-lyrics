@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Windows.Media;
 
 namespace APMLyrics.Config;
 
@@ -81,5 +82,37 @@ public static class AppSettingsStore
         // Spec section 6 exposes the multi-line neighbour count; keep it to a
         // range the overlay can actually render legibly.
         NeighbourRadius = Math.Clamp(s.NeighbourRadius, 0, 4),
+        // Colour strings are not self-validating: a hand-edited or half-written
+        // settings.json can hold any string here, and the overlay has to render
+        // every one of them at startup. Normalizing them is the documented Load
+        // contract ("falling back to defaults for a missing or corrupt file")
+        // rather than letting an unrenderable colour reach the renderer.
+        TextColor = NormalizeColor(s.TextColor, AppSettings.Default.TextColor),
+        CurrentLineColor = NormalizeColor(s.CurrentLineColor, AppSettings.Default.CurrentLineColor),
+        BackdropColor = NormalizeColor(s.BackdropColor, AppSettings.Default.BackdropColor),
     };
+
+    /// <summary>Returns the stored colour when it parses, else the field's default.</summary>
+    private static string NormalizeColor(string? value, string fallback)
+        => CanParseColor(value) ? value! : fallback;
+
+    /// <summary>
+    /// Uses the same call the overlay uses, so "valid here" and "renderable there"
+    /// cannot drift apart. It accepts exactly what ColorConverter accepts: named
+    /// colours and #RGB / #RRGGBB / #AARRGGBB forms.
+    /// </summary>
+    private static bool CanParseColor(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        try
+        {
+            return ColorConverter.ConvertFromString(value) is Color;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
 }
