@@ -681,8 +681,7 @@ public sealed class PlaybackClock
 
     // The displayed (interpolated) position is committed into the anchor before
     // the play flag flips, so pausing or resuming never jumps the position back
-    // to the last coarse SMTC tick. A bare flag flip would do exactly that, and
-    // the "Stops_interpolating_while_paused" test below catches it.
+    // to the last coarse SMTC tick.
     public void Pause() => Sync(Position, isPlaying: false, rate: _rate);
     public void Resume() => Sync(Position, isPlaying: true, rate: _rate);
 
@@ -2332,6 +2331,24 @@ public partial class OverlayWindow : Window
 
     public void SetClickThrough(bool enabled) => ClickThrough.Apply(this, enabled);
 
+    /// <summary>
+    /// Spec section 5.2: a short opacity crossfade on line change. Deliberately
+    /// brief and applied only when the lyric line advances, so the MOTION 1 dial
+    /// holds and the reading surface never feels animated. One animation, not a
+    /// dip-and-return pair: BeginAnimation on the same property replaces the
+    /// previous animation, so a second call would silently cancel the first.
+    /// </summary>
+    public void FadeInCurrentLine()
+    {
+        var fade = new System.Windows.Media.Animation.DoubleAnimation
+        {
+            From = 0.35,
+            To = 1.0,
+            Duration = TimeSpan.FromMilliseconds(180),
+        };
+        CurrLine.BeginAnimation(OpacityProperty, fade);
+    }
+
     /// <summary>Track change: clear immediately so the previous song's lines never linger.</summary>
     public void Apply(Track? track)
     {
@@ -2399,6 +2416,10 @@ public partial class OverlayWindow : Window
             var current = index >= 0 ? _doc.Lines[index].Text : string.Empty;
             CurrLine.Text = current;
             SingleLinePanel.Text = current;
+
+            // Crossfade the current line on change only; the progress fill below
+            // runs every tick and must not animate the text.
+            FadeInCurrentLine();
 
             if (_settings.Mode == DisplayMode.MultiLine)
             {
@@ -2686,116 +2707,6 @@ public sealed class TrayIcon : IDisposable
 
 ```csharp
 using System.Windows;
-using APMLyrics.Config;
-
-namespace APMLyrics.Ui;
-
-public partial class SettingsWindow : Window
-{
-    private readonly AppSettings _initial;
-
-    public SettingsWindow(AppSettings settings)
-    {
-        InitializeComponent();
-        _initial = settings;
-
-        ModeMulti.IsChecked = settings.Mode == DisplayMode.MultiLine;
-        ModeSingle.IsChecked = settings.Mode == DisplayMode.SingleLine;
-        Radius.Value = settings.NeighbourRadius;
-
-        // Font family dropdown: seeded from installed families, plus whatever the
-        // saved setting names in case it is no longer installed.
-        var families = System.Windows.Media.Fonts.SystemFontFamilies
-            .Select(f => f.Source)
-            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (!families.Contains(settings.FontFamily, StringComparer.OrdinalIgnoreCase))
-            families.Insert(0, settings.FontFamily);
-        FontFamilyPicker.ItemsSource = families;
-        FontFamilyPicker.SelectedItem = families
-            .First(f => string.Equals(f, settings.FontFamily, StringComparison.OrdinalIgnoreCase));
-
-        FontSizeSlider.Value = settings.FontSize;
-        TextColorBox.Text = settings.TextColor;
-        CurrentLineColorBox.Text = settings.CurrentLineColor;
-        BackdropColorBox.Text = settings.BackdropColor;
-        NeighbourOpacity.Value = settings.NeighbourOpacity;
-        Backdrop.Value = settings.BackdropOpacity;
-        Dim.IsChecked = settings.DimNeighbours;
-        Through.IsChecked = settings.ClickThrough;
-
-        // Spec section 6: "Changes apply live." Every control reports a change the
-        // moment the user makes it, so the overlay updates without a confirmation
-        // step. There is no Apply button: with live updates it would be a control
-        // that does nothing (antislop R-26), so the window carries a Close instead.
-        ModeMulti.Checked += OnAnyChange;
-        ModeSingle.Checked += OnAnyChange;
-        Radius.ValueChanged += OnAnyChange;
-        FontFamilyPicker.SelectionChanged += OnAnyChange;
-        FontSizeSlider.ValueChanged += OnAnyChange;
-        TextColorBox.TextChanged += OnAnyChange;
-        CurrentLineColorBox.TextChanged += OnAnyChange;
-        BackdropColorBox.TextChanged += OnAnyChange;
-        NeighbourOpacity.ValueChanged += OnAnyChange;
-        Backdrop.ValueChanged += OnAnyChange;
-        Dim.Checked += OnAnyChange;
-        Dim.Unchecked += OnAnyChange;
-        Through.Checked += OnAnyChange;
-        Through.Unchecked += OnAnyChange;
-
-        Close.Click += (_, _) => Close();
-    }
-
-    private void OnAnyChange(object sender, RoutedEventArgs e) => Applied?.Invoke(Build());
-
-    public event Action<AppSettings>? Applied;
-
-    private AppSettings Build() => _initial with
-    {
-        Mode = ModeMulti.IsChecked == true ? DisplayMode.MultiLine : DisplayMode.SingleLine,
-        NeighbourRadius = (int)Radius.Value,
-        FontFamily = FontFamilyPicker.SelectedItem as string ?? _initial.FontFamily,
-        FontSize = FontSizeSlider.Value,
-        TextColor = TextColorBox.Text,
-        CurrentLineColor = CurrentLineColorBox.Text,
-        BackdropColor = BackdropColorBox.Text,
-        BackdropOpacity = Backdrop.Value,
-        NeighbourOpacity = NeighbourOpacity.Value,
-        DimNeighbours = Dim.IsChecked == true,
-        ClickThrough = Through.IsChecked == true,
-    };
-}
-```
-
-- [ ] **Step 4: Build**
-
-Run: `dotnet build src/APMLyrics`
-Expected: Build succeeded.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A && git commit -m "feat: add tray icon and settings window"
-```
-
----
-
-### Task 10: Wire it together in App
-
-**Files:**
-- Create: `src/APMLyrics/App.xaml`, `src/APMLyrics/App.xaml.cs`
-- Modify: `src/APMLyrics/APMLyrics.csproj` (switch `OutputType` from `Library` to `WinExe`; the WPF SDK picks `App.xaml` up as the application definition and generates `Main`)
-
-**Interfaces:**
-- Consumes: every prior task.
-- Produces: a runnable app where `dotnet run --project src/APMLyrics` shows the overlay.
-
-- [ ] **Step 1: Write App.xaml**
-
-`src/APMLyrics/App.xaml`:
-
-```xml
-using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using APMLyrics.Config;
@@ -2948,6 +2859,42 @@ public partial class SettingsWindow : Window
 }
 ```
 
+- [ ] **Step 4: Build**
+
+Run: `dotnet build src/APMLyrics`
+Expected: Build succeeded.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A && git commit -m "feat: add tray icon and settings window"
+```
+
+---
+
+### Task 10: Wire it together in App
+
+**Files:**
+- Create: `src/APMLyrics/App.xaml`, `src/APMLyrics/App.xaml.cs`
+- Modify: `src/APMLyrics/APMLyrics.csproj` (switch `OutputType` from `Library` to `WinExe`; the WPF SDK picks `App.xaml` up as the application definition and generates `Main`)
+
+**Interfaces:**
+- Consumes: every prior task.
+- Produces: a runnable app where `dotnet run --project src/APMLyrics` shows the overlay.
+
+- [ ] **Step 1: Write App.xaml**
+
+`src/APMLyrics/App.xaml`:
+
+```xml
+<Application x:Class="APMLyrics.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources/>
+</Application>
+```
+
 - [ ] **Step 2: Switch the project to an executable**
 
 In `src/APMLyrics/APMLyrics.csproj`, change `<OutputType>Library</OutputType>` to `<OutputType>WinExe</OutputType>`. The WPF SDK auto-detects `App.xaml` as the application definition and generates the entry point, so no `Main` is written by hand.
@@ -2993,6 +2940,9 @@ public partial class App : Application
             return;
         }
 
+        // A missing file is the normal first run: Load() falls back to
+        // AppSettings.Default, so a second copy of the defaults does not belong
+        // here. Two copies would drift the first time either one changed.
         _settings = AppSettingsStore.Load(AppSettingsStore.DefaultPath);
 
         // Settings are written on a debounce: a resize drag raises changes
@@ -3017,7 +2967,8 @@ public partial class App : Application
         // bounds so the overlay cannot be dragged somewhere unrecoverable".
         // Restoring a saved position blindly strands the overlay off-screen when
         // the display layout changed, so clamp against the current virtual screen
-        // before showing it.
+        // before showing it. The upper bound is floored at the virtual origin so a
+        // window larger than the screen still lands at the top-left, not off-screen.
         var virtualLeft = SystemParameters.VirtualScreenLeft;
         var virtualTop = SystemParameters.VirtualScreenTop;
         var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
@@ -3028,6 +2979,9 @@ public partial class App : Application
         _overlay.ApplySettings(_settings);
         _overlay.SettingsChanged += OnOverlayChanged;
         _overlay.Show();
+
+        // After Show(), so the window handle exists and the extended style can be
+        // applied to it.
         _overlay.SetClickThrough(_settings.ClickThrough);
 
         _tray = new TrayIcon(_overlay, () => _settings, OnOverlayChanged);
@@ -3051,9 +3005,16 @@ public partial class App : Application
         _playback.Start();
     }
 
+    /// <summary>
+    /// Single funnel for settings changes, whether they come from a drag, a resize,
+    /// the tray menu, or the settings window. Called on the UI thread.
+    /// </summary>
     private void OnOverlayChanged(AppSettings settings)
     {
         _settings = settings;
+
+        // Debounced: restart the window on every change and let it expire once the
+        // gestures stop, rather than writing the file on every drag frame.
         _saveTimer?.Stop();
         _saveTimer?.Start();
     }
@@ -3091,6 +3052,8 @@ public partial class App : Application
         if (_resolver is null || _playback?.Current is not { } track || _overlay is null)
             return;
 
+        // A newer track supersedes this resolution: cancel the older lookup so its
+        // result cannot land on top of the newer one.
         _resolveCts?.Cancel();
         _resolveCts = new CancellationTokenSource();
         var token = _resolveCts.Token;
@@ -3103,8 +3066,10 @@ public partial class App : Application
                 return;
 
             // Apply/NoLyrics mutate WPF text, and the continuation after the await
-            // is not guaranteed to resume on the UI thread.
-            Dispatcher.InvokeAsync(() =>
+            // is not guaranteed to resume on the UI thread. Awaited so the queued
+            // operation is not an unobserved fire-and-forget (CS4014) in this
+            // async method; the lambda still runs on the UI thread either way.
+            await Dispatcher.InvokeAsync(() =>
             {
                 if (token.IsCancellationRequested)
                     return;
@@ -3123,6 +3088,9 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // Flush whatever the debounce has not written yet, then release the
+        // resources that outlive the window: tray icon first so it cannot outlive
+        // the process, then the watcher and the poll loop.
         _saveTimer?.Stop();
         AppSettingsStore.Save(AppSettingsStore.DefaultPath, _settings);
         _tray?.Dispose();
@@ -3198,7 +3166,7 @@ OutputDir=Output
 OutputBaseFilename=APMLyricsSetup
 Compression=lzma2
 SolidCompression=yes
-ArchitecturesInstallIn64bitMode=yes
+ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayIcon={app}\APMLyrics.exe
 
