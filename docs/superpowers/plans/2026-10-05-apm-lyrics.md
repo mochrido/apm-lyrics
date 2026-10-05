@@ -1183,6 +1183,8 @@ public sealed record AppSettings
     public double Y { get; init; } = 100;
     public double Width { get; init; } = 560;
     public double Height { get; init; } = 160;
+    /// <summary>Neighbour lines shown either side of the current line in multi-line mode (spec section 6).</summary>
+    public int NeighbourRadius { get; init; } = 1;
 
     public static AppSettings Default { get; } = new();
 }
@@ -1233,6 +1235,9 @@ public static class AppSettingsStore
         FontSize = Math.Clamp(s.FontSize, 10, 96),
         Width = Math.Max(240, s.Width),
         Height = Math.Max(60, s.Height),
+        // Spec section 6 exposes the multi-line neighbour count; keep it to a
+        // range the overlay can actually render legibly.
+        NeighbourRadius = Math.Clamp(s.NeighbourRadius, 0, 4),
     };
 }
 ```
@@ -2213,7 +2218,7 @@ public static class ClickThrough
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock x:Name="PrevLine" Grid.Row="0" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="PrevLine" Grid.Row="0" TextAlignment="Center" TextWrapping="Wrap"/>
                 <StackPanel Grid.Row="1" Margin="0,6">
                     <TextBlock x:Name="CurrLine" TextAlignment="Center" TextWrapping="Wrap"/>
                     <!-- Progress fill for the current line. LineWindow.Progress drives
@@ -2235,7 +2240,7 @@ public static class ClickThrough
                         </Rectangle>
                     </Border>
                 </StackPanel>
-                <TextBlock x:Name="NextLine" Grid.Row="2" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="NextLine" Grid.Row="2" TextAlignment="Center" TextWrapping="Wrap"/>
             </Grid>
             <TextBlock x:Name="SingleLinePanel" TextAlignment="Center" TextWrapping="Wrap" Visibility="Collapsed"/>
         </Grid>
@@ -2380,8 +2385,24 @@ public partial class OverlayWindow : Window
 
             if (_settings.Mode == DisplayMode.MultiLine)
             {
-                PrevLine.Text = index - 1 >= 0 ? _doc.Lines[index - 1].Text : string.Empty;
-                NextLine.Text = index + 1 < _doc.Lines.Count ? _doc.Lines[index + 1].Text : string.Empty;
+                // Spec section 6 exposes the neighbour count. The overlay has one
+                // TextBlock per side, so the setting is honoured by joining the
+                // neighbours within the radius into that block: radius 1 gives one
+                // line per side, radius 2 gives two, and so on.
+                var range = LineWindow.Compute(_doc.Lines.Count, index, _settings.NeighbourRadius);
+
+                PrevLine.Text = index > 0
+                    ? string.Join("\n", Enumerable
+                        .Range(range.First, Math.Max(0, index - range.First))
+                        .Select(i => _doc.Lines[i].Text))
+                    : string.Empty;
+
+                var afterCurrent = index + 1;
+                NextLine.Text = afterCurrent < _doc.Lines.Count
+                    ? string.Join("\n", Enumerable
+                        .Range(afterCurrent, Math.Min(range.Last, _doc.Lines.Count - 1) - afterCurrent + 1)
+                        .Select(i => _doc.Lines[i].Text))
+                    : string.Empty;
             }
         }
 
@@ -2572,6 +2593,9 @@ public sealed class TrayIcon : IDisposable
         <RadioButton x:Name="ModeMulti" Content="Multi-line (previous, current, next)" GroupName="mode" Margin="0,6,0,0" IsChecked="True"/>
         <RadioButton x:Name="ModeSingle" Content="Single-line" GroupName="mode" Margin="0,4,0,12"/>
 
+        <TextBlock Text="Neighbour lines (0 to 4)" FontWeight="SemiBold"/>
+        <Slider x:Name="Radius" Minimum="0" Maximum="4" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+
         <TextBlock Text="Font size (10 to 96)" FontWeight="SemiBold"/>
         <Slider x:Name="FontSize" Minimum="10" Maximum="96" TickFrequency="2" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
 
@@ -2609,6 +2633,7 @@ public partial class SettingsWindow : Window
         ModeMulti.IsChecked = settings.Mode == DisplayMode.MultiLine;
         ModeSingle.IsChecked = settings.Mode == DisplayMode.SingleLine;
         FontSize.Value = settings.FontSize;
+        Radius.Value = settings.NeighbourRadius;
         Backdrop.Value = settings.BackdropOpacity;
         Dim.IsChecked = settings.DimNeighbours;
         Through.IsChecked = settings.ClickThrough;
@@ -2621,6 +2646,7 @@ public partial class SettingsWindow : Window
     private AppSettings Build() => _initial with
     {
         Mode = ModeMulti.IsChecked == true ? DisplayMode.MultiLine : DisplayMode.SingleLine,
+        NeighbourRadius = (int)Radius.Value,
         FontSize = FontSize.Value,
         BackdropOpacity = Backdrop.Value,
         DimNeighbours = Dim.IsChecked == true,
@@ -2728,6 +2754,20 @@ public partial class App : Application
             Width = _settings.Width,
             Height = _settings.Height,
         };
+
+        // Spec section 5: "a guard that pulls the window back on screen if the
+        // saved monitor is gone", and "position is clamped to the virtual screen
+        // bounds so the overlay cannot be dragged somewhere unrecoverable".
+        // Restoring a saved position blindly strands the overlay off-screen when
+        // the display layout changed, so clamp against the current virtual screen
+        // before showing it.
+        var virtualLeft = SystemParameters.VirtualScreenLeft;
+        var virtualTop = SystemParameters.VirtualScreenTop;
+        var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
+        var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
+
+        _overlay.Left = Math.Clamp(_overlay.Left, virtualLeft, Math.Max(virtualLeft, virtualRight - _overlay.Width));
+        _overlay.Top = Math.Clamp(_overlay.Top, virtualTop, Math.Max(virtualTop, virtualBottom - _overlay.Height));
         _overlay.ApplySettings(_settings);
         _overlay.SettingsChanged += OnOverlayChanged;
         _overlay.Show();
