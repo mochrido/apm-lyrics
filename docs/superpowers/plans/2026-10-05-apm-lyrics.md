@@ -1072,6 +1072,7 @@ Create `tests/APMLyrics.Tests/AppSettingsTests.cs`:
 using APMLyrics.Config;
 using Xunit;
 
+using System.IO;
 namespace APMLyrics.Tests;
 
 public class AppSettingsTests
@@ -1156,6 +1157,7 @@ Expected: FAIL, `AppSettings` does not exist.
 ```csharp
 using System.Text.Json;
 
+using System.IO;
 namespace APMLyrics.Config;
 
 public enum DisplayMode
@@ -1290,6 +1292,8 @@ using System.Net;
 using APMLyrics.Core;
 using Xunit;
 
+using System.IO;
+using System.Net.Http;
 namespace APMLyrics.Tests;
 
 public class CatalogClientTests
@@ -1425,6 +1429,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using System.IO;
 namespace APMLyrics.Core;
 
 /// <summary>Seam so the resolver can be tested without touching the real cache directory.</summary>
@@ -1596,6 +1601,7 @@ public sealed class CatalogClient : ICatalogClient
 ```csharp
 using System.Text.Json;
 
+using System.IO;
 namespace APMLyrics.Core;
 
 /// <summary>
@@ -1850,6 +1856,7 @@ Expected: FAIL, `LyricsResolver` and `IAppleLyricsCache` do not exist.
 `src/APMLyrics/Core/LyricsResolver.cs`:
 
 ```csharp
+using System.IO;
 namespace APMLyrics.Core;
 
 /// <summary>
