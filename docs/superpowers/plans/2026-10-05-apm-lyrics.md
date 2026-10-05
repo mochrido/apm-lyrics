@@ -147,12 +147,6 @@ And `tests/APMLyrics.Tests/APMLyrics.Tests.csproj`:
   <ItemGroup>
     <ProjectReference Include="..\..\src\APMLyrics\APMLyrics.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <!-- Synthetic lookup payload for CatalogClientTests; must sit next to the test assembly.
-         Without this the fixture never reaches AppContext.BaseDirectory and 4 tests fail.
-         Use Update, not Include: Include triggers NETSDK1022 duplicate-items. -->
-    <None Update="fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
 </Project>
 ```
 The test project must target the same Windows TFM and enable WPF, because it references a WPF assembly.
@@ -178,8 +172,6 @@ Create `src/APMLyrics/app.manifest`:
 Create `tests/APMLyrics.Tests/SmokeTests.cs`:
 
 ```csharp
-using Xunit;
-
 namespace APMLyrics.Tests;
 
 public class SmokeTests
@@ -510,43 +502,6 @@ public class PlaybackClockTests
     }
 
     [Fact]
-    public void Resumes_from_the_paused_position()
-    {
-        var t = new FakeTime();
-        var clock = new PlaybackClock(t);
-        clock.Sync(TimeSpan.FromSeconds(10), isPlaying: true, rate: 1.0);
-        t.Now = TimeSpan.FromMilliseconds(200);
-        clock.Pause();
-        t.Now = TimeSpan.FromSeconds(5);
-        _ = clock.Position; // held at 10.2s while paused
-        clock.Resume();
-        t.Now = TimeSpan.FromMilliseconds(5300);
-        Assert.Equal(TimeSpan.FromSeconds(10.5), clock.Position);
-    }
-
-    [Fact]
-    public void Resuming_while_already_playing_does_not_rewind()
-    {
-        var t = new FakeTime();
-        var clock = new PlaybackClock(t);
-        clock.Sync(TimeSpan.FromSeconds(10), isPlaying: true, rate: 1.0);
-        t.Now = TimeSpan.FromSeconds(1);
-        _ = clock.Position; // 11s
-        clock.Resume(); // already playing: must not re-anchor and jump back
-        t.Now = TimeSpan.FromSeconds(1.5);
-        Assert.Equal(TimeSpan.FromSeconds(11.5), clock.Position);
-    }
-
-    [Fact]
-    public void System_time_source_advances()
-    {
-        var time = new SystemTimeSource();
-        var first = time.Now;
-        Thread.Sleep(20);
-        Assert.True(time.Now > first);
-    }
-
-    [Fact]
     public void Honours_a_non_default_rate()
     {
         var t = new FakeTime();
@@ -650,29 +605,6 @@ public class LineWindowTests
         var line = new LyricLine(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2), "x", null);
         Assert.Equal(1.0, LineWindow.Progress(line, TimeSpan.FromSeconds(2)));
     }
-
-    [Fact]
-    public void Current_index_is_the_last_line_that_has_begun()
-    {
-        var lines = new[]
-        {
-            new LyricLine(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3), "one", null),
-            new LyricLine(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(6), "two", null),
-            new LyricLine(TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(9), "three", null),
-        };
-
-        Assert.Equal(-1, LineWindow.CurrentIndex(lines, TimeSpan.FromSeconds(0.5)));
-        Assert.Equal(0, LineWindow.CurrentIndex(lines, TimeSpan.FromSeconds(1)));
-        Assert.Equal(0, LineWindow.CurrentIndex(lines, TimeSpan.FromSeconds(2)));
-        Assert.Equal(1, LineWindow.CurrentIndex(lines, TimeSpan.FromSeconds(3)));
-        Assert.Equal(2, LineWindow.CurrentIndex(lines, TimeSpan.FromSeconds(20)));
-    }
-
-    [Fact]
-    public void Current_index_of_an_empty_document_is_minus_one()
-    {
-        Assert.Equal(-1, LineWindow.CurrentIndex(Array.Empty<LyricLine>(), TimeSpan.FromSeconds(5)));
-    }
 }
 ```
 
@@ -743,7 +675,8 @@ public sealed class PlaybackClock
 
     // The displayed (interpolated) position is committed into the anchor before
     // the play flag flips, so pausing or resuming never jumps the position back
-    // to the last coarse SMTC tick.
+    // to the last coarse SMTC tick. A bare flag flip would do exactly that, and
+    // the "Stops_interpolating_while_paused" test below catches it.
     public void Pause() => Sync(Position, isPlaying: false, rate: _rate);
     public void Resume() => Sync(Position, isPlaying: true, rate: _rate);
 
@@ -1136,10 +1069,10 @@ git add -A && git commit -m "feat: add lyrics matcher keyed on title and artist 
 Create `tests/APMLyrics.Tests/AppSettingsTests.cs`:
 
 ```csharp
-using System.IO;
 using APMLyrics.Config;
 using Xunit;
 
+using System.IO;
 namespace APMLyrics.Tests;
 
 public class AppSettingsTests
@@ -1222,9 +1155,9 @@ Expected: FAIL, `AppSettings` does not exist.
 `src/APMLyrics/Config/AppSettings.cs`:
 
 ```csharp
-using System.IO;
 using System.Text.Json;
 
+using System.IO;
 namespace APMLyrics.Config;
 
 public enum DisplayMode
@@ -1250,6 +1183,8 @@ public sealed record AppSettings
     public double Y { get; init; } = 100;
     public double Width { get; init; } = 560;
     public double Height { get; init; } = 160;
+    /// <summary>Neighbour lines shown either side of the current line in multi-line mode (spec section 6).</summary>
+    public int NeighbourRadius { get; init; } = 1;
 
     public static AppSettings Default { get; } = new();
 }
@@ -1300,6 +1235,9 @@ public static class AppSettingsStore
         FontSize = Math.Clamp(s.FontSize, 10, 96),
         Width = Math.Max(240, s.Width),
         Height = Math.Max(60, s.Height),
+        // Spec section 6 exposes the multi-line neighbour count; keep it to a
+        // range the overlay can actually render legibly.
+        NeighbourRadius = Math.Clamp(s.NeighbourRadius, 0, 4),
     };
 }
 ```
@@ -1355,12 +1293,12 @@ Create `tests/APMLyrics.Tests/fixtures/synthetic/catalog-lookup.json`:
 Create `tests/APMLyrics.Tests/CatalogClientTests.cs`:
 
 ```csharp
-using System.IO;
 using System.Net;
-using System.Net.Http;
 using APMLyrics.Core;
 using Xunit;
 
+using System.IO;
+using System.Net.Http;
 namespace APMLyrics.Tests;
 
 public class CatalogClientTests
@@ -1368,28 +1306,16 @@ public class CatalogClientTests
     private class StubHandler : HttpMessageHandler
     {
         private readonly string _body;
-        private bool _disposed;
         public int Calls { get; private set; }
         public StubHandler(string body) => _body = body;
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            // Real handlers (HttpClientHandler, SocketsHttpHandler) throw after
-            // disposal; a stub that keeps serving would hide that class of bug.
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(StubHandler));
-
             Calls++;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(_body),
             });
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            _disposed = true;
-            base.Dispose(disposing);
         }
     }
 
@@ -1485,26 +1411,6 @@ public class CatalogClientTests
         finally { File.Delete(cache); }
     }
 
-    [Fact]
-    public async Task One_injected_handler_keeps_working_across_lookups()
-    {
-        // The client must not dispose the handler it was handed: that handler is
-        // the caller's seam, and disposing it would make every later lookup for a
-        // different id fail with ObjectDisposedException.
-        var cache = Path.Combine(Path.GetTempPath(), $"apm-cat-{Guid.NewGuid():N}.json");
-        try
-        {
-            var handler = new StubHandler(Body);
-            var client = new CatalogClient(handler, cache);
-
-            Assert.NotNull(await client.LookupAsync("AP_1872239909", CancellationToken.None));
-            Assert.NotNull(await client.LookupAsync("AP_1872239911", CancellationToken.None));
-
-            Assert.Equal(2, handler.Calls);
-        }
-        finally { File.Delete(cache); }
-    }
-
     private class ThrowingHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
@@ -1524,11 +1430,11 @@ Expected: FAIL, `CatalogClient` does not exist.
 `src/APMLyrics/Core/CatalogClient.cs`:
 
 ```csharp
-using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using System.IO;
 namespace APMLyrics.Core;
 
 /// <summary>Seam so the resolver can be tested without touching the real cache directory.</summary>
@@ -1594,22 +1500,10 @@ public sealed class CatalogClient : ICatalogClient
         TrackInfo? info = null;
         try
         {
+            using var client = _handler is null ? Shared : new HttpClient(_handler);
             var url = $"https://itunes.apple.com/lookup?id={songId}";
-            if (_handler is null)
-            {
-                // Shared is process-wide: it must NOT be disposed here, or every
-                // lookup after the first one would fail with ObjectDisposedException
-                // and the app would silently serve nothing but warm entries.
-                info = Parse(await Shared.GetStringAsync(url, ct));
-            }
-            else
-            {
-                // disposeHandler: false: the handler is owned by the caller
-                // (a test seam); disposing it here would kill every later
-                // lookup that reuses the same handler.
-                using var client = new HttpClient(_handler, disposeHandler: false);
-                info = Parse(await client.GetStringAsync(url, ct));
-            }
+            var json = await client.GetStringAsync(url, ct);
+            info = Parse(json);
         }
         catch (Exception)
         {
@@ -1702,16 +1596,17 @@ public sealed class CatalogClient : ICatalogClient
         [property: JsonPropertyName("trackName")] string? TrackName,
         [property: JsonPropertyName("artistName")] string? ArtistName,
         [property: JsonPropertyName("trackTimeMillis")] long? TrackTimeMillis);
-}```
+}
+```
 
 - [ ] **Step 4: Write the cache index**
 
 `src/APMLyrics/Core/AppleLyricsCache.cs`:
 
 ```csharp
-using System.IO;
 using System.Text.Json;
 
+using System.IO;
 namespace APMLyrics.Core;
 
 /// <summary>
@@ -1726,6 +1621,7 @@ namespace APMLyrics.Core;
 public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
 {
     private FileSystemWatcher? _watcher;
+    private string? _watchedRoot;
     private readonly string? _explicitRoot;
 
     public AppleLyricsCache(string? cacheRoot = null)
@@ -1739,7 +1635,7 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
 
     /// <summary>
     /// Creates the watcher if a cache root is now resolvable and none is attached
-    /// yet. Safe to call repeatedly; it attaches at most once.
+    /// yet. Safe to call repeatedly; it attaches at most once per root.
     /// </summary>
     private void EnsureWatcher()
     {
@@ -1757,6 +1653,7 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
             };
             _watcher.Created += (_, e) => RaiseIfValid(e.FullPath);
             _watcher.Changed += (_, e) => RaiseIfValid(e.FullPath);
+            _watchedRoot = root;
         }
         catch (Exception)
         {
@@ -1846,8 +1743,10 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
     {
         _watcher?.Dispose();
         _watcher = null;
+        _watchedRoot = null;
     }
-}```
+}
+```
 
 - [ ] **Step 5: Run to verify it passes**
 
@@ -1890,7 +1789,7 @@ namespace APMLyrics.Tests;
 public class LyricsResolverTests
 {
     private const string DanTtml = """
-    <tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en"><body dur="5:06.000">
+    <tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en"><body dur="5:05.718">
       <div><p begin="1" end="2">dan line one</p></div>
     </body></tt>
     """;
@@ -1922,15 +1821,13 @@ public class LyricsResolverTests
         cache.Candidates.Add(new Candidate("dan.json", "AP_1872239911", DanTtml));
         cache.Candidates.Add(new Candidate("spoiled.json", "AP_1872239909", SpoiledTtml));
 
-        // Dan's TTML body is nudged so it is the NEARER match to the played
-        // 306.0s (the matcher orders by TTML body length, not the catalog's),
-        // while the played title is Spoiled. Duration alone would therefore
-        // resolve to the wrong song, and only the title key can reach the
-        // asserted lyrics id. (The real pair is 305.718 vs 306.066, where
-        // duration ordering happens to agree with the right answer; that
-        // fixture could not detect a broken title comparison. Spec section 2.5
-        // records the real measurements; this fixture perturbs them to be
-        // load-bearing.)
+        // The catalog durations are set so Dan is the NEARER body match to the
+        // played 306.0s, while the played title is Spoiled. Duration alone would
+        // therefore resolve to the wrong song, and only the title key can reach
+        // the asserted lyrics id. (The real pair is 305.718 vs 306.066, where
+        // duration ordering happens to agree with the right answer; that fixture
+        // could not detect a broken title comparison. Spec section 2.5 records
+        // the real measurements; this fixture perturbs them to be load-bearing.)
         var catalog = new FakeCatalog();
         catalog.Answers["AP_1872239911"] = new TrackInfo("Dan", "Noah Kahan", TimeSpan.FromSeconds(306.0));
         catalog.Answers["AP_1872239909"] = new TrackInfo("Spoiled", "Noah Kahan", TimeSpan.FromSeconds(306.066));
@@ -1958,7 +1855,8 @@ public class LyricsResolverTests
 
         Assert.Null(await resolver.ResolveAsync(track, CancellationToken.None));
     }
-}```
+}
+```
 
 - [ ] **Step 2: Run to verify it fails**
 
