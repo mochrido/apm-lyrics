@@ -3102,12 +3102,14 @@ public partial class App : Application
 }
 ```
 
+The clamp in `OnStartup` implements spec section 5's position requirements: the restored window position is clamped against `SystemParameters.VirtualScreen*` before the overlay is shown, so the overlay is pulled back on screen when the saved monitor is gone and cannot be restored off screen.
+
 - [ ] **Step 4: Run it with Apple Music playing**
 
 Run: `dotnet run --project src/APMLyrics`
 Expected: an overlay appears showing the current Apple Music line. Verify with the manual checklist in Task 11.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "feat: wire playback, resolution, and overlay together at startup"

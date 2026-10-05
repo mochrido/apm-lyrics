@@ -14,7 +14,7 @@ publish/
 .vs/
 
 ## Installer output
-installer/Output/
+install/Output/
 *.exe
 *.msi
 
