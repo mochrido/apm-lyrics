@@ -3123,6 +3123,7 @@ git add -A && git commit -m "feat: wire playback, resolution, and overlay togeth
 
 **Files:**
 - Create: `install/APMLyrics.iss`, `.github/workflows/build.yml`, `docs/manual-testing.md`
+- Modify: `README.md` (the Status and Building sections must describe the shipped state, not the pre-implementation state)
 
 **Interfaces:**
 - Consumes: the built app.
@@ -3153,7 +3154,7 @@ Run once per release on a real Apple Music session. Record the date and result.
 - [ ] Quit from the tray: the process exits with no orphaned window.
 ```
 
-Run the checklist against a live session. Fill it in. This is the evidence for spec R-35 and the manual portion of the test plan.
+The checklist is for a HUMAN to run against a live session: the implementer cannot verify drag, resize, click-through, topmost, or playback behaviour without a real desktop and a live Apple Music session. Commit it with every box unticked, and state plainly in the report which items were not run. Ticking a box the implementer did not personally observe is a false verification.
 
 - [ ] **Step 2: Write the installer script**
 
@@ -3162,6 +3163,7 @@ Run the checklist against a live session. Fill it in. This is the evidence for s
 ```ini
 [Setup]
 AppName=APM Lyrics
+AppId={{2364AC50-F04A-49EF-A549-37AB82B4E4CC}
 AppVersion=0.1.0
 AppPublisher=APM Lyrics contributors
 DefaultDirName={autopf}\APM Lyrics
@@ -3170,6 +3172,8 @@ OutputDir=Output
 OutputBaseFilename=APMLyricsSetup
 Compression=lzma2
 SolidCompression=yes
+; The publish target is win-x64 and there is no 32-bit build, so the installer
+; is 64-bit only.
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayIcon={app}\APMLyrics.exe
@@ -3179,10 +3183,6 @@ Source: "..\src\APMLyrics\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish
 
 [Icons]
 Name: "{group}\APM Lyrics"; Filename: "{app}\APMLyrics.exe"
-Name: "{autostartup}\APM Lyrics"; Filename: "{app}\APMLyrics.exe"; Tasks: autostart
-
-[Tasks]
-Name: "autostart"; Description: "Start APM Lyrics when Windows starts"; Flags: unchecked
 
 [Run]
 Filename: "{app}\APMLyrics.exe"; Description: "Launch APM Lyrics"; Flags: nowait postinstall skipifsilent
