@@ -1029,7 +1029,7 @@ public static class LyricsMatcher
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `dotnet test --filter LyricsMatcherTests`
-Expected: PASS, 11 tests. The collision tests encode spec section 2.5.
+Expected: PASS, 10 tests. The collision tests encode spec section 2.5.
 
 - [ ] **Step 5: Commit**
 
