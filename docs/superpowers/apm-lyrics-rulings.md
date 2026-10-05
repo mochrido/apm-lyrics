@@ -263,3 +263,44 @@ and reworks whatever was decided incorrectly.
   not worth un-reviewed scope on the eve of handover, and section 10 is the spec's own
   mechanism for turning an omission into a choice. Cost if wrong: the settings window looks
   plain, which is what 0.1.0 already shipped.
+
+---
+
+## Parked residuals (found, verified, deliberately NOT fixed)
+
+The process allows exactly one fix wave after the final whole-branch review, and it was
+spent on the two Important defects plus three minors. These residuals were found by that
+review and its re-review, verified by the controller, and parked with a known fix shape.
+Neither blocks a merge.
+
+### R1. A degenerate begin/end timing value in a cached TTML file can still crash the app
+
+The fix wave made a malformed `dur` a miss. The same family survives one field over.
+`TtmlParser.ParseTime` (src/APMLyrics/Core/TtmlParser.cs:54-70) parses the raw attribute
+with `double.Parse`, so `begin="1e300"` throws OverflowException and `begin="NaN"` throws
+ArgumentException. `TtmlParser.Parse` propagates both, and `LyricsResolver.ResolveAsync`
+catches only FormatException around it, so they escape into `App.ReResolve` (an `async void`
+that catches only OperationCanceledException) and reach the dispatcher unhandled. Measured
+by the controller: `begin="1e300"` gives OverflowException, `begin="NaN"` gives
+ArgumentException, `begin="1.5e11"` parses (absurd but harmless).
+Reachability is low: it needs a cache file holding such a value; a truncated write produces
+invalid XML (already handled), and Apple's own writer does not emit these. A hand-edited
+file would. Spec section 7 promises a malformed cache file is skipped, so the honest fix is
+to convert an unparseable begin/end into the parser's own FormatException, which the
+resolver already turns into a skip. One test: a document whose begin is `1e300` is a miss,
+not a crash.
+
+### R2. Catalog cache entries written before the fix wave may still hold poisoned nulls
+
+The fix stops a FAILED lookup from being persisted; it does not scrub entries an earlier
+build already wrote. Such an entry is a negative that never retries. Nothing is poisoned on
+this machine: the app data directory does not exist. A user who ran an earlier build while
+offline can delete `%APPDATA%\APMLyrics\catalog-cache.json`, or a small migration could
+drop null entries on load.
+
+## Deferred-minors triage
+
+The final whole-branch review triaged every deferred minor recorded in the ledger and
+concluded that none blocked the merge; all were "ship" at 0.1.0. The two it escalated
+(the catalog negative-cache note and the malformed-dur note) were both fixed by the final
+wave above.
