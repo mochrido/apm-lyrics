@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{AA887F0A-56B8-4101-8FAB-69312953514C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "APMLyrics", "src\APMLyrics\APMLyrics.csproj", "{A5E284BA-FA03-4475-BBA4-49DAB6CCC323}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{A51A0700-FB27-41EA-A8D5-FC34F33E82FC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "APMLyrics.Tests", "tests\APMLyrics.Tests\APMLyrics.Tests.csproj", "{EDF6C063-92BF-4ECC-905D-93461D40D3C5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A5E284BA-FA03-4475-BBA4-49DAB6CCC323}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5E284BA-FA03-4475-BBA4-49DAB6CCC323}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5E284BA-FA03-4475-BBA4-49DAB6CCC323}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5E284BA-FA03-4475-BBA4-49DAB6CCC323}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EDF6C063-92BF-4ECC-905D-93461D40D3C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDF6C063-92BF-4ECC-905D-93461D40D3C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDF6C063-92BF-4ECC-905D-93461D40D3C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EDF6C063-92BF-4ECC-905D-93461D40D3C5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A5E284BA-FA03-4475-BBA4-49DAB6CCC323} = {AA887F0A-56B8-4101-8FAB-69312953514C}
+		{EDF6C063-92BF-4ECC-905D-93461D40D3C5} = {A51A0700-FB27-41EA-A8D5-FC34F33E82FC}
+	EndGlobalSection
+EndGlobal
