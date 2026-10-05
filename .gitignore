@@ -1,0 +1,28 @@
+## Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+publish/
+*.user
+*.suo
+.vs/
+
+## Installer output
+installer/Output/
+*.exe
+*.msi
+
+## Test data: real lyric cache captures contain personal listening data.
+## Never commit these. See the design spec, Testing section.
+tests/**/fixtures/live/**
+!tests/**/fixtures/synthetic/**
+
+## Local settings and scratch
+*.local.json
+scratch/
