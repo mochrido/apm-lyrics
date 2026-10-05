@@ -50,27 +50,57 @@ public class LineWindowTests
     }
 
     [Fact]
-    public void Progress_is_zero_at_begin_and_one_at_end()
+    public void Fitted_font_size_is_unchanged_at_the_design_size()
     {
-        var line = new LyricLine(TimeSpan.Zero, TimeSpan.FromSeconds(4), "x", null);
-        Assert.Equal(0.0, LineWindow.Progress(line, TimeSpan.Zero));
-        Assert.Equal(1.0, LineWindow.Progress(line, TimeSpan.FromSeconds(4)));
-        Assert.Equal(0.5, LineWindow.Progress(line, TimeSpan.FromSeconds(2)));
+        // The configured size is the size for the design window, so a window at
+        // exactly 560x160 renders exactly what the user asked for.
+        Assert.Equal(28.0, LineWindow.FitFontSize(28, 560, 160, 3));
     }
 
     [Fact]
-    public void Progress_is_clamped_outside_the_line()
+    public void Fitted_font_size_shrinks_with_the_window()
     {
-        var line = new LyricLine(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), "x", null);
-        Assert.Equal(0.0, LineWindow.Progress(line, TimeSpan.FromSeconds(1)));
-        Assert.Equal(1.0, LineWindow.Progress(line, TimeSpan.FromSeconds(9)));
+        // Half the height means roughly half the text, so a short strip stays
+        // readable instead of clipping the line.
+        var small = LineWindow.FitFontSize(28, 280, 80, 3);
+        Assert.True(small < 28, $"expected smaller than 28, got {small}");
+        Assert.True(small > 6, $"expected still readable, got {small}");
     }
 
     [Fact]
-    public void Progress_handles_a_zero_length_line()
+    public void Fitted_font_size_grows_with_the_window()
     {
-        var line = new LyricLine(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2), "x", null);
-        Assert.Equal(1.0, LineWindow.Progress(line, TimeSpan.FromSeconds(2)));
+        // Roughly double, not exactly: the border padding is a fixed size, so it
+        // does not scale with the window. The range is what matters here.
+        var large = LineWindow.FitFontSize(28, 1120, 320, 3);
+        Assert.InRange(large, 50, 65);
+    }
+
+    [Fact]
+    public void Fitted_font_size_uses_the_tighter_axis()
+    {
+        // Wide but very short: the height must win, or the text clips.
+        var shortWide = LineWindow.FitFontSize(28, 2000, 80, 3);
+        var tallNarrow = LineWindow.FitFontSize(28, 280, 2000, 3);
+        Assert.True(shortWide < 28);
+        Assert.True(tallNarrow < 28);
+    }
+
+    [Fact]
+    public void Fitted_font_size_accounts_for_more_neighbour_rows()
+    {
+        // Five rows must share the same height, so each is smaller than with three.
+        var threeRows = LineWindow.FitFontSize(28, 560, 160, 3);
+        var fiveRows = LineWindow.FitFontSize(28, 560, 160, 5);
+        Assert.True(fiveRows < threeRows, $"expected {fiveRows} < {threeRows}");
+    }
+
+    [Fact]
+    public void Fitted_font_size_never_returns_something_unreadable()
+    {
+        // A window dragged as small as it can go still yields usable text.
+        var tiny = LineWindow.FitFontSize(28, 40, 32, 3);
+        Assert.True(tiny >= 6, $"expected a readable floor, got {tiny}");
     }
 
     [Fact]

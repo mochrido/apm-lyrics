@@ -626,27 +626,57 @@ public class LineWindowTests
     }
 
     [Fact]
-    public void Progress_is_zero_at_begin_and_one_at_end()
+    public void Fitted_font_size_is_unchanged_at_the_design_size()
     {
-        var line = new LyricLine(TimeSpan.Zero, TimeSpan.FromSeconds(4), "x", null);
-        Assert.Equal(0.0, LineWindow.Progress(line, TimeSpan.Zero));
-        Assert.Equal(1.0, LineWindow.Progress(line, TimeSpan.FromSeconds(4)));
-        Assert.Equal(0.5, LineWindow.Progress(line, TimeSpan.FromSeconds(2)));
+        // The configured size is the size for the design window, so a window at
+        // exactly 560x160 renders exactly what the user asked for.
+        Assert.Equal(28.0, LineWindow.FitFontSize(28, 560, 160, 3));
     }
 
     [Fact]
-    public void Progress_is_clamped_outside_the_line()
+    public void Fitted_font_size_shrinks_with_the_window()
     {
-        var line = new LyricLine(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), "x", null);
-        Assert.Equal(0.0, LineWindow.Progress(line, TimeSpan.FromSeconds(1)));
-        Assert.Equal(1.0, LineWindow.Progress(line, TimeSpan.FromSeconds(9)));
+        // Half the height means roughly half the text, so a short strip stays
+        // readable instead of clipping the line.
+        var small = LineWindow.FitFontSize(28, 280, 80, 3);
+        Assert.True(small < 28, $"expected smaller than 28, got {small}");
+        Assert.True(small > 6, $"expected still readable, got {small}");
     }
 
     [Fact]
-    public void Progress_handles_a_zero_length_line()
+    public void Fitted_font_size_grows_with_the_window()
     {
-        var line = new LyricLine(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2), "x", null);
-        Assert.Equal(1.0, LineWindow.Progress(line, TimeSpan.FromSeconds(2)));
+        // Roughly double, not exactly: the border padding is a fixed size, so it
+        // does not scale with the window. The range is what matters here.
+        var large = LineWindow.FitFontSize(28, 1120, 320, 3);
+        Assert.InRange(large, 50, 65);
+    }
+
+    [Fact]
+    public void Fitted_font_size_uses_the_tighter_axis()
+    {
+        // Wide but very short: the height must win, or the text clips.
+        var shortWide = LineWindow.FitFontSize(28, 2000, 80, 3);
+        var tallNarrow = LineWindow.FitFontSize(28, 280, 2000, 3);
+        Assert.True(shortWide < 28);
+        Assert.True(tallNarrow < 28);
+    }
+
+    [Fact]
+    public void Fitted_font_size_accounts_for_more_neighbour_rows()
+    {
+        // Five rows must share the same height, so each is smaller than with three.
+        var threeRows = LineWindow.FitFontSize(28, 560, 160, 3);
+        var fiveRows = LineWindow.FitFontSize(28, 560, 160, 5);
+        Assert.True(fiveRows < threeRows, $"expected {fiveRows} < {threeRows}");
+    }
+
+    [Fact]
+    public void Fitted_font_size_never_returns_something_unreadable()
+    {
+        // A window dragged as small as it can go still yields usable text.
+        var tiny = LineWindow.FitFontSize(28, 40, 32, 3);
+        Assert.True(tiny >= 6, $"expected a readable floor, got {tiny}");
     }
 
     [Fact]
@@ -761,10 +791,22 @@ namespace APMLyrics.Ui;
 
 /// <summary>
 /// Pure windowing maths for the overlay: which lines are visible for a given
-/// current index, and how far through the current line playback is.
+/// current index, and how large the text should be for the window it is in.
 /// </summary>
 public static class LineWindow
 {
+    /// <summary>The window size the stored font size is calibrated against.</summary>
+    public const double DesignWidth = 560;
+    public const double DesignHeight = 160;
+
+    /// <summary>Border padding, as laid out in the overlay: 16 left/right, 10 top/bottom.</summary>
+    private const double PaddingX = 32;
+    private const double PaddingY = 20;
+
+    /// <summary>Text smaller than this is unreadable; larger than the ceiling is a bug.</summary>
+    private const double MinFontSize = 6;
+    private const double MaxFontSize = 200;
+
     public readonly record struct Range(int First, int Current, int Last);
 
     public static Range Compute(int lineCount, int currentIndex, int radius)
@@ -778,14 +820,28 @@ public static class LineWindow
         return new Range(first, current, last);
     }
 
-    public static double Progress(LyricLine line, TimeSpan position)
+    /// <summary>
+    /// Font size for the current window, so the text always fills it without
+    /// overflowing. The stored setting is calibrated to the design size, so a
+    /// window at 560x160 renders exactly the configured size and every other
+    /// size scales from there. The tighter of the two axes wins, because a
+    /// short window clips vertically and a narrow one wraps into more rows.
+    /// Extra neighbour rows shrink the result so five rows fit where three did.
+    /// </summary>
+    public static double FitFontSize(double baseFontSize, double width, double height, int rows)
     {
-        var span = (line.End - line.Begin).TotalSeconds;
-        if (span <= 0)
-            return position >= line.End ? 1.0 : 0.0;
+        var usableWidth = Math.Max(0, width - PaddingX);
+        var usableHeight = Math.Max(0, height - PaddingY);
 
-        var progress = (position - line.Begin).TotalSeconds / span;
-        return Math.Clamp(progress, 0.0, 1.0);
+        var widthScale = usableWidth / (DesignWidth - PaddingX);
+        var heightScale = usableHeight / (DesignHeight - PaddingY);
+        var scale = Math.Min(widthScale, heightScale);
+
+        // Three rows (one neighbour each side) is the design layout. More rows
+        // must share the same height, so shrink proportionally.
+        var rowScale = rows > 3 ? 3.0 / rows : 1.0;
+
+        return Math.Clamp(baseFontSize * scale * rowScale, MinFontSize, MaxFontSize);
     }
 
     /// <summary>Index of the last line that has begun, or -1 before the first line.</summary>
@@ -1473,8 +1529,13 @@ public static class AppSettingsStore
         BackdropOpacity = Math.Clamp(s.BackdropOpacity, 0.0, 1.0),
         NeighbourOpacity = Math.Clamp(s.NeighbourOpacity, 0.0, 1.0),
         FontSize = Math.Clamp(s.FontSize, 10, 96),
-        Width = Math.Max(240, s.Width),
-        Height = Math.Max(60, s.Height),
+        // The overlay may be shrunk to a taskbar-height strip, so these floors
+        // are the smallest a restored size may be rather than the old 240x60
+        // reading-size minimum. The window measures the real taskbar height at
+        // startup and enforces that itself; these keep a corrupt file from
+        // restoring something degenerate.
+        Width = Math.Max(160, s.Width),
+        Height = Math.Max(32, s.Height),
         // Spec section 6 exposes the multi-line neighbour count; keep it to a
         // range the overlay can actually render legibly.
         NeighbourRadius = Math.Clamp(s.NeighbourRadius, 0, 4),
@@ -2623,8 +2684,6 @@ public static class ClickThrough
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="CanResize"
-        MinWidth="240"
-        MinHeight="60"
         SizeToContent="Manual">
     <Border x:Name="Backdrop"
             CornerRadius="8"
@@ -2638,27 +2697,7 @@ public static class ClickThrough
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <TextBlock x:Name="PrevLine" Grid.Row="0" TextAlignment="Center" TextWrapping="Wrap"/>
-                <StackPanel Grid.Row="1" Margin="0,6">
-                    <TextBlock x:Name="CurrLine" TextAlignment="Center" TextWrapping="Wrap"/>
-                    <!-- Progress fill for the current line. LineWindow.Progress drives
-                         ProgressScale.ScaleX each tick, so spec 4.3's "progress fraction
-                         drives the progress fill" is implemented rather than left as an
-                         unused helper. A 2px rule is deliberately subtle: it reads as
-                         timing, not as decoration. -->
-                    <Border x:Name="ProgressTrack"
-                            Height="2"
-                            Margin="0,6,0,0"
-                            CornerRadius="1"
-                            Opacity="0.5">
-                        <Rectangle x:Name="ProgressBar"
-                                   HorizontalAlignment="Stretch"
-                                   RenderTransformOrigin="0,0">
-                            <Rectangle.RenderTransform>
-                                <ScaleTransform x:Name="ProgressScale" ScaleX="0"/>
-                            </Rectangle.RenderTransform>
-                        </Rectangle>
-                    </Border>
-                </StackPanel>
+                <TextBlock x:Name="CurrLine" Grid.Row="1" TextAlignment="Center" TextWrapping="Wrap"/>
                 <TextBlock x:Name="NextLine" Grid.Row="2" TextAlignment="Center" TextWrapping="Wrap"/>
             </Grid>
             <TextBlock x:Name="SingleLinePanel" TextAlignment="Center" TextWrapping="Wrap" Visibility="Collapsed"/>
@@ -2696,6 +2735,18 @@ public partial class OverlayWindow : Window
         // for resize hit-test answers. Without this the window cannot be
         // resized at all; see ResizeGrip for the measurement.
         SourceInitialized += (_, _) => ResizeGrip.Attach(this);
+
+        // The smallest the overlay may become is a taskbar-height strip. The
+        // taskbar's height is not a constant: it changes with DPI and with the
+        // small-buttons setting, so it is measured from the gap between the
+        // screen and the work area rather than hardcoded. Floor at 32 so a
+        // surprising measurement cannot make the window unusable.
+        var taskbar = SystemParameters.PrimaryScreenHeight - SystemParameters.WorkArea.Height;
+        MinHeight = Math.Max(32, Math.Min(taskbar, _settings.Height));
+
+        // Width has no taskbar equivalent, so this is the narrowest strip that
+        // still renders a few words at the fitted font floor.
+        MinWidth = 160;
     }
 
     /// <summary>Raised when the user moves or resizes, so settings can be persisted.</summary>
@@ -2706,8 +2757,6 @@ public partial class OverlayWindow : Window
         _settings = settings;
 
         PrevLine.FontFamily = CurrLine.FontFamily = NextLine.FontFamily = SingleLinePanel.FontFamily = new FontFamily(settings.FontFamily);
-        PrevLine.FontSize = NextLine.FontSize = settings.FontSize * 0.7;
-        CurrLine.FontSize = SingleLinePanel.FontSize = settings.FontSize;
 
         CurrLine.Foreground = new SolidColorBrush(ParseColor(settings.CurrentLineColor, Colors.White));
         PrevLine.Foreground = NextLine.Foreground = new SolidColorBrush(ParseColor(settings.TextColor, Colors.White));
@@ -2717,14 +2766,6 @@ public partial class OverlayWindow : Window
         var backdropColor = ParseColor(settings.BackdropColor, Colors.Black);
         backdropColor.A = (byte)(Math.Clamp(settings.BackdropOpacity, 0, 1) * 255);
         Backdrop.Background = new SolidColorBrush(backdropColor);
-
-        // The progress rule needs explicit brushes: a Rectangle with no Fill is
-        // invisible, so leaving these unset would make the fill a silent no-op.
-        var lineColor = ParseColor(settings.CurrentLineColor, Colors.White);
-        ProgressBar.Fill = new SolidColorBrush(lineColor);
-        var trackColor = lineColor;
-        trackColor.A = 60;
-        ProgressTrack.Background = new SolidColorBrush(trackColor);
 
         var multi = settings.Mode == DisplayMode.MultiLine;
         MultiLinePanel.Visibility = multi ? Visibility.Visible : Visibility.Collapsed;
@@ -2736,6 +2777,8 @@ public partial class OverlayWindow : Window
         if (double.IsNaN(Width) || Width <= 0) Width = settings.Width;
         if (double.IsNaN(Height) || Height <= 0) Height = settings.Height;
 
+        ApplyFontSize();
+
         // Restyling is not a line change: force the text to be recomputed (a
         // neighbour-radius or display-mode edit genuinely changes what is drawn),
         // but do not replay the spec 5.2 arrival crossfade for styling. Live
@@ -2743,6 +2786,26 @@ public partial class OverlayWindow : Window
         // animating here would pulse the current line throughout a settings edit.
         _lastIndex = -2; // force a refresh with the new styling
         Render(animate: false);
+    }
+
+    /// <summary>
+    /// Sizes the text to the current window. Resizing used to change the frame
+    /// only, so shrinking the overlay clipped the text and growing it left the
+    /// lyrics stranded in the middle at their old size. The configured font size
+    /// is the size for the design window; everything else scales from there.
+    /// </summary>
+    private void ApplyFontSize()
+    {
+        // Rows actually drawn: the current line plus the neighbours either side,
+        // capped by what the document has to offer.
+        var rows = _settings.Mode == DisplayMode.MultiLine
+            ? Math.Min(_settings.NeighbourRadius, _doc?.Lines.Count ?? 0) * 2 + 1
+            : 1;
+
+        var size = LineWindow.FitFontSize(_settings.FontSize, ActualWidth, ActualHeight, rows);
+
+        CurrLine.FontSize = SingleLinePanel.FontSize = size;
+        PrevLine.FontSize = NextLine.FontSize = size * 0.7;
     }
 
     /// <summary>
@@ -2815,6 +2878,13 @@ public partial class OverlayWindow : Window
     public void Tick(TimeSpan position)
     {
         _position = position;
+
+        // The bar is gone, so a tick only matters when it moves the highlight to
+        // a new line. Without this early return the overlay would still re-run
+        // the matcher four times a second for nothing.
+        if (_doc is not null && LineWindow.CurrentIndex(_doc.Lines, _position) == _lastIndex)
+            return;
+
         Render();
     }
 
@@ -2836,7 +2906,6 @@ public partial class OverlayWindow : Window
             NextLine.Text = string.Empty;
             CurrLine.Text = text;
             SingleLinePanel.Text = text;
-            ProgressScale.ScaleX = 0;
             return;
         }
 
@@ -2852,10 +2921,14 @@ public partial class OverlayWindow : Window
             CurrLine.Text = current;
             SingleLinePanel.Text = current;
 
-            // Crossfade the current line on change only; the progress fill below
-            // runs every tick and must not animate the text. A styling-only
-            // refresh (ApplySettings) passes animate: false so restyling never
-            // replays this arrival animation.
+            // The row count can change with the line (a shorter neighbour list at
+            // the start or end of a song), so the fitted size is recomputed here
+            // rather than only on resize.
+            ApplyFontSize();
+
+            // Crossfade the current line on change only. A styling-only refresh
+            // (ApplySettings) passes animate: false so restyling never replays
+            // this arrival animation.
             if (animate)
                 FadeInCurrentLine();
 
@@ -2882,11 +2955,8 @@ public partial class OverlayWindow : Window
             }
         }
 
-        // The progress fill advances on every tick, independently of the text
-        // branch above. Setting a transform is cheap; it does not re-layout text.
-        ProgressScale.ScaleX = index >= 0
-            ? LineWindow.Progress(_doc.Lines[index], _position)
-            : 0;
+        // The progress fill advanced on every tick; the bar is gone, so nothing
+        // here needs to run for a position-only update.
     }
 
     private void Backdrop_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2905,6 +2975,13 @@ public partial class OverlayWindow : Window
     protected override void OnRenderSizeChanged(SizeChangedInfo info)
     {
         base.OnRenderSizeChanged(info);
+
+        // Resizing changes how much room the text has, so the size is refitted
+        // here. This runs on every frame of a resize drag; it only sets font
+        // sizes, which is cheap, and it is what keeps the text filling the
+        // window at every size instead of staying at its old size.
+        ApplyFontSize();
+
         SettingsChanged?.Invoke(_settings with { Width = Width, Height = Height });
     }
 }
@@ -3589,7 +3666,10 @@ Run once per release on a real Apple Music session. Record the date and result.
 
 - [ ] Overlay appears on launch and shows the current line.
 - [ ] Drag from the centre of the overlay: it moves, and the position persists after restart.
-- [ ] Resize from all four edges and all four corners: the text reflows, minimum size holds.
+- [ ] Resize from all four edges and all four corners: the text refits to the new size, and the overlay can be shrunk to about a taskbar-height strip.
+- [ ] Grow the overlay to roughly double its default size: the lyric text scales up with it instead of staying at its old size.
+- [ ] Shrink the overlay to its minimum: the text is still readable and nothing is clipped.
+- [ ] No progress bar is drawn under the current line.
 - [ ] Play a song with lyrics: the current line advances in time with the audio.
 - [ ] Skip to the next track: the previous lines clear immediately, a loading state shows, then the new lines appear.
 - [ ] Play a song with no lyrics: "No lyrics for this song" or the title state shows, never the previous song.

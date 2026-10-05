@@ -4,7 +4,10 @@ Run once per release on a real Apple Music session. Record the date and result.
 
 - [ ] Overlay appears on launch and shows the current line.
 - [ ] Drag from the centre of the overlay: it moves, and the position persists after restart.
-- [ ] Resize from all four edges and all four corners: the text reflows, minimum size holds.
+- [ ] Resize from all four edges and all four corners: the text refits to the new size, and the overlay can be shrunk to about a taskbar-height strip.
+- [ ] Grow the overlay to roughly double its default size: the lyric text scales up with it instead of staying at its old size.
+- [ ] Shrink the overlay to its minimum: the text is still readable and nothing is clipped.
+- [ ] No progress bar is drawn under the current line.
 - [ ] Play a song with lyrics: the current line advances in time with the audio.
 - [ ] Skip to the next track: the previous lines clear immediately, a loading state shows, then the new lines appear.
 - [ ] Play a song with no lyrics: "No lyrics for this song" or the title state shows, never the previous song.

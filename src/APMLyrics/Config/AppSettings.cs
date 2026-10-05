@@ -77,8 +77,13 @@ public static class AppSettingsStore
         BackdropOpacity = Math.Clamp(s.BackdropOpacity, 0.0, 1.0),
         NeighbourOpacity = Math.Clamp(s.NeighbourOpacity, 0.0, 1.0),
         FontSize = Math.Clamp(s.FontSize, 10, 96),
-        Width = Math.Max(240, s.Width),
-        Height = Math.Max(60, s.Height),
+        // The overlay may be shrunk to a taskbar-height strip, so these floors
+        // are the smallest a restored size may be rather than the old 240x60
+        // reading-size minimum. The window measures the real taskbar height at
+        // startup and enforces that itself; these keep a corrupt file from
+        // restoring something degenerate.
+        Width = Math.Max(160, s.Width),
+        Height = Math.Max(32, s.Height),
         // Spec section 6 exposes the multi-line neighbour count; keep it to a
         // range the overlay can actually render legibly.
         NeighbourRadius = Math.Clamp(s.NeighbourRadius, 0, 4),

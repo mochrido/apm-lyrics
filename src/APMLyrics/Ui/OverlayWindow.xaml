@@ -8,8 +8,6 @@
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="CanResize"
-        MinWidth="240"
-        MinHeight="60"
         SizeToContent="Manual">
     <Border x:Name="Backdrop"
             CornerRadius="8"
@@ -23,27 +21,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <TextBlock x:Name="PrevLine" Grid.Row="0" TextAlignment="Center" TextWrapping="Wrap"/>
-                <StackPanel Grid.Row="1" Margin="0,6">
-                    <TextBlock x:Name="CurrLine" TextAlignment="Center" TextWrapping="Wrap"/>
-                    <!-- Progress fill for the current line. LineWindow.Progress drives
-                         ProgressScale.ScaleX each tick, so spec 4.3's "progress fraction
-                         drives the progress fill" is implemented rather than left as an
-                         unused helper. A 2px rule is deliberately subtle: it reads as
-                         timing, not as decoration. -->
-                    <Border x:Name="ProgressTrack"
-                            Height="2"
-                            Margin="0,6,0,0"
-                            CornerRadius="1"
-                            Opacity="0.5">
-                        <Rectangle x:Name="ProgressBar"
-                                   HorizontalAlignment="Stretch"
-                                   RenderTransformOrigin="0,0">
-                            <Rectangle.RenderTransform>
-                                <ScaleTransform x:Name="ProgressScale" ScaleX="0"/>
-                            </Rectangle.RenderTransform>
-                        </Rectangle>
-                    </Border>
-                </StackPanel>
+                <TextBlock x:Name="CurrLine" Grid.Row="1" TextAlignment="Center" TextWrapping="Wrap"/>
                 <TextBlock x:Name="NextLine" Grid.Row="2" TextAlignment="Center" TextWrapping="Wrap"/>
             </Grid>
             <TextBlock x:Name="SingleLinePanel" TextAlignment="Center" TextWrapping="Wrap" Visibility="Collapsed"/>

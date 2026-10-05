@@ -24,6 +24,18 @@ public partial class OverlayWindow : Window
         // for resize hit-test answers. Without this the window cannot be
         // resized at all; see ResizeGrip for the measurement.
         SourceInitialized += (_, _) => ResizeGrip.Attach(this);
+
+        // The smallest the overlay may become is a taskbar-height strip. The
+        // taskbar's height is not a constant: it changes with DPI and with the
+        // small-buttons setting, so it is measured from the gap between the
+        // screen and the work area rather than hardcoded. Floor at 32 so a
+        // surprising measurement cannot make the window unusable.
+        var taskbar = SystemParameters.PrimaryScreenHeight - SystemParameters.WorkArea.Height;
+        MinHeight = Math.Max(32, Math.Min(taskbar, _settings.Height));
+
+        // Width has no taskbar equivalent, so this is the narrowest strip that
+        // still renders a few words at the fitted font floor.
+        MinWidth = 160;
     }
 
     /// <summary>Raised when the user moves or resizes, so settings can be persisted.</summary>
@@ -34,8 +46,6 @@ public partial class OverlayWindow : Window
         _settings = settings;
 
         PrevLine.FontFamily = CurrLine.FontFamily = NextLine.FontFamily = SingleLinePanel.FontFamily = new FontFamily(settings.FontFamily);
-        PrevLine.FontSize = NextLine.FontSize = settings.FontSize * 0.7;
-        CurrLine.FontSize = SingleLinePanel.FontSize = settings.FontSize;
 
         CurrLine.Foreground = new SolidColorBrush(ParseColor(settings.CurrentLineColor, Colors.White));
         PrevLine.Foreground = NextLine.Foreground = new SolidColorBrush(ParseColor(settings.TextColor, Colors.White));
@@ -45,14 +55,6 @@ public partial class OverlayWindow : Window
         var backdropColor = ParseColor(settings.BackdropColor, Colors.Black);
         backdropColor.A = (byte)(Math.Clamp(settings.BackdropOpacity, 0, 1) * 255);
         Backdrop.Background = new SolidColorBrush(backdropColor);
-
-        // The progress rule needs explicit brushes: a Rectangle with no Fill is
-        // invisible, so leaving these unset would make the fill a silent no-op.
-        var lineColor = ParseColor(settings.CurrentLineColor, Colors.White);
-        ProgressBar.Fill = new SolidColorBrush(lineColor);
-        var trackColor = lineColor;
-        trackColor.A = 60;
-        ProgressTrack.Background = new SolidColorBrush(trackColor);
 
         var multi = settings.Mode == DisplayMode.MultiLine;
         MultiLinePanel.Visibility = multi ? Visibility.Visible : Visibility.Collapsed;
@@ -64,6 +66,8 @@ public partial class OverlayWindow : Window
         if (double.IsNaN(Width) || Width <= 0) Width = settings.Width;
         if (double.IsNaN(Height) || Height <= 0) Height = settings.Height;
 
+        ApplyFontSize();
+
         // Restyling is not a line change: force the text to be recomputed (a
         // neighbour-radius or display-mode edit genuinely changes what is drawn),
         // but do not replay the spec 5.2 arrival crossfade for styling. Live
@@ -71,6 +75,26 @@ public partial class OverlayWindow : Window
         // animating here would pulse the current line throughout a settings edit.
         _lastIndex = -2; // force a refresh with the new styling
         Render(animate: false);
+    }
+
+    /// <summary>
+    /// Sizes the text to the current window. Resizing used to change the frame
+    /// only, so shrinking the overlay clipped the text and growing it left the
+    /// lyrics stranded in the middle at their old size. The configured font size
+    /// is the size for the design window; everything else scales from there.
+    /// </summary>
+    private void ApplyFontSize()
+    {
+        // Rows actually drawn: the current line plus the neighbours either side,
+        // capped by what the document has to offer.
+        var rows = _settings.Mode == DisplayMode.MultiLine
+            ? Math.Min(_settings.NeighbourRadius, _doc?.Lines.Count ?? 0) * 2 + 1
+            : 1;
+
+        var size = LineWindow.FitFontSize(_settings.FontSize, ActualWidth, ActualHeight, rows);
+
+        CurrLine.FontSize = SingleLinePanel.FontSize = size;
+        PrevLine.FontSize = NextLine.FontSize = size * 0.7;
     }
 
     /// <summary>
@@ -143,6 +167,13 @@ public partial class OverlayWindow : Window
     public void Tick(TimeSpan position)
     {
         _position = position;
+
+        // The bar is gone, so a tick only matters when it moves the highlight to
+        // a new line. Without this early return the overlay would still re-run
+        // the matcher four times a second for nothing.
+        if (_doc is not null && LineWindow.CurrentIndex(_doc.Lines, _position) == _lastIndex)
+            return;
+
         Render();
     }
 
@@ -164,7 +195,6 @@ public partial class OverlayWindow : Window
             NextLine.Text = string.Empty;
             CurrLine.Text = text;
             SingleLinePanel.Text = text;
-            ProgressScale.ScaleX = 0;
             return;
         }
 
@@ -180,10 +210,14 @@ public partial class OverlayWindow : Window
             CurrLine.Text = current;
             SingleLinePanel.Text = current;
 
-            // Crossfade the current line on change only; the progress fill below
-            // runs every tick and must not animate the text. A styling-only
-            // refresh (ApplySettings) passes animate: false so restyling never
-            // replays this arrival animation.
+            // The row count can change with the line (a shorter neighbour list at
+            // the start or end of a song), so the fitted size is recomputed here
+            // rather than only on resize.
+            ApplyFontSize();
+
+            // Crossfade the current line on change only. A styling-only refresh
+            // (ApplySettings) passes animate: false so restyling never replays
+            // this arrival animation.
             if (animate)
                 FadeInCurrentLine();
 
@@ -210,11 +244,8 @@ public partial class OverlayWindow : Window
             }
         }
 
-        // The progress fill advances on every tick, independently of the text
-        // branch above. Setting a transform is cheap; it does not re-layout text.
-        ProgressScale.ScaleX = index >= 0
-            ? LineWindow.Progress(_doc.Lines[index], _position)
-            : 0;
+        // The progress fill advanced on every tick; the bar is gone, so nothing
+        // here needs to run for a position-only update.
     }
 
     private void Backdrop_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -233,6 +264,13 @@ public partial class OverlayWindow : Window
     protected override void OnRenderSizeChanged(SizeChangedInfo info)
     {
         base.OnRenderSizeChanged(info);
+
+        // Resizing changes how much room the text has, so the size is refitted
+        // here. This runs on every frame of a resize drag; it only sets font
+        // sizes, which is cheap, and it is what keeps the text filling the
+        // window at every size instead of staying at its old size.
+        ApplyFontSize();
+
         SettingsChanged?.Invoke(_settings with { Width = Width, Height = Height });
     }
 }

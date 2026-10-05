@@ -121,9 +121,10 @@ identity can only be inferred from timing. Consequence: two-tier resolution, sec
 
 Every cached document on the machine used `itunes:timing="Line"` with `<p>` line elements and zero
 `<span>` elements. Consequence: word-by-word highlighting, as Apple Music shows in its own full
-screen view, is not available from the cache. The overlay highlights the current line and can
-animate a progress fill across that line's duration. That fill is derived from the line's start and
-end times, and it is honest about being derived: it is not Apple's per-word timing.
+screen view, is not available from the cache. The overlay highlights the current line. An early
+version also drew a per-line progress rule under it; it was removed because the line timings are
+Apple's own approximation, so the rule could visibly lag or outrun the singing, and it added motion
+to a reading surface for no legibility gain.
 
 ## 3. Architecture
 
@@ -202,12 +203,12 @@ and compare accent-insensitively.
 `SMTCTracker` polls SMTC at 4Hz (250ms). SMTC ticks are coarse, so the overlay keeps a monotonic
 clock between ticks: on each tick it records `(position, timestamp)`, and between ticks it
 interpolates `position + (now - timestamp)`. Interpolation stops when the track is paused. The
-current line is the last line whose `Begin` is at or before the interpolated position. A line
-progress fraction, `(position - Begin) / (End - Begin)`, drives the progress fill and is clamped to
-`[0, 1]`. Playback rate from `GetPlaybackInfo` is folded into the interpolation when it is not 1.0.
+current line is the last line whose `Begin` is at or before the interpolated position. Playback rate
+from `GetPlaybackInfo` is folded into the interpolation when it is not 1.0.
 
-Repaints happen on line change and on a low-frequency progress tick, not per frame, so an idle
-overlay costs almost nothing.
+Repaints happen on line change, not per tick: nothing on screen changes between two ticks of the
+same line, so a position update that does not move the highlight is dropped before it reaches the
+renderer. An idle overlay therefore costs almost nothing.
 
 ## 5. Overlay window
 
@@ -226,7 +227,13 @@ honest description of what is in use.
 borderless, the whole surface is a drag handle, except interactive controls, which are None in the
 default overlay.
 
-**Resize.** Native resize from `ResizeMode`. Minimum size 240 by 60 to keep a line readable.
+**Resize.** Native resize from `ResizeMode`, with the text refitted to the window as it changes so the
+lyrics always fill the space rather than being clipped when it shrinks or stranded when it grows. The
+overlay may be shrunk to a taskbar-height strip: the minimum height is measured at startup from the
+gap between the screen and the work area (48px on a default-DPI 1080p display, and it varies with
+DPI and the small-buttons setting), floored at 32 so a surprising measurement cannot make the window
+unusable. The minimum width is 160, the narrowest strip that still renders a few words at the font
+floor.
 
 **Click-through.** Toggled from the tray menu, never from the overlay itself. Setting the extended
 window style `WS_EX_TRANSPARENT | WS_EX_LAYERED` via `SetWindowLong` makes the overlay ignore the
@@ -257,8 +264,7 @@ difference is how many lines the window contains.
 
 Dials: **ENERGY 2 / RHYTHM 1 / MOTION 1.** The overlay is a reading surface that sits on top of
 someone else's work, so it stays restrained. Motion is limited to a short opacity crossfade on line
-change and a progress fill, both serving legibility rather than decoration. This is a stated
-direction, not a default.
+change, serving legibility rather than decoration. This is a stated direction, not a default.
 
 Per the antislop rules that govern UI work in this repository: no em dash in user-facing text,
 text over the overlay must meet WCAG AA contrast against whatever is behind it (a dark scrim behind
