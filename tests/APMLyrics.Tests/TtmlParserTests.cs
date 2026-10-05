@@ -43,6 +43,26 @@ public class TtmlParserTests
     }
 
     [Fact]
+    public void Skips_an_empty_line_left_by_an_instrumental_gap()
+    {
+        // Review Focus item 1: Apple emits whitespace-only p elements for
+        // instrumental gaps. They must never render as blank lyrics.
+        var ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml"><body>
+          <div>
+            <p begin="1" end="2">before the gap</p>
+            <p begin="2" end="6">   </p>
+            <p begin="6" end="8">after the gap</p>
+          </div>
+        </body></tt>
+        """;
+        var doc = TtmlParser.Parse("AP_3", ttml);
+        Assert.Equal(2, doc.Lines.Count);
+        Assert.Equal("before the gap", doc.Lines[0].Text);
+        Assert.Equal("after the gap", doc.Lines[1].Text);
+    }
+
+    [Fact]
     public void Reads_language_from_the_root()
     {
         var doc = TtmlParser.Parse("AP_1", Doc);
