@@ -1,0 +1,30 @@
+<Window x:Class="APMLyrics.Ui.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="APM Lyrics settings"
+        Width="440" Height="520"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True">
+    <StackPanel Margin="20" >
+        <TextBlock Text="Display mode" FontWeight="SemiBold"/>
+        <RadioButton x:Name="ModeMulti" Content="Multi-line (previous, current, next)" GroupName="mode" Margin="0,6,0,0" IsChecked="True"/>
+        <RadioButton x:Name="ModeSingle" Content="Single-line" GroupName="mode" Margin="0,4,0,12"/>
+
+        <TextBlock Text="Neighbour lines (0 to 4)" FontWeight="SemiBold"/>
+        <Slider x:Name="Radius" Minimum="0" Maximum="4" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+
+        <TextBlock Text="Font size (10 to 96)" FontWeight="SemiBold"/>
+        <Slider x:Name="FontSizeSlider" Minimum="10" Maximum="96" TickFrequency="2" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+
+        <TextBlock Text="Backdrop opacity (higher is more readable)" FontWeight="SemiBold"/>
+        <Slider x:Name="Backdrop" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+
+        <TextBlock Text="Dim the neighbouring lines" FontWeight="SemiBold"/>
+        <CheckBox x:Name="Dim" Margin="0,6,0,12"/>
+
+        <TextBlock Text="Click-through (the tray menu can undo this)" FontWeight="SemiBold"/>
+        <CheckBox x:Name="Through" Margin="0,6,0,16"/>
+
+        <Button x:Name="Apply" Content="Apply" Height="34" IsDefault="True"/>
+    </StackPanel>
+</Window>

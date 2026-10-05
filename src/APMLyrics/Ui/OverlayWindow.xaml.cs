@@ -65,6 +65,24 @@ public partial class OverlayWindow : Window
 
     public void SetClickThrough(bool enabled) => ClickThrough.Apply(this, enabled);
 
+    /// <summary>
+    /// Spec section 5.2: a short opacity crossfade on line change. Deliberately
+    /// brief and applied only when the lyric line advances, so the MOTION 1 dial
+    /// holds and the reading surface never feels animated. One animation, not a
+    /// dip-and-return pair: BeginAnimation on the same property replaces the
+    /// previous animation, so a second call would silently cancel the first.
+    /// </summary>
+    public void FadeInCurrentLine()
+    {
+        var fade = new System.Windows.Media.Animation.DoubleAnimation
+        {
+            From = 0.35,
+            To = 1.0,
+            Duration = TimeSpan.FromMilliseconds(180),
+        };
+        CurrLine.BeginAnimation(OpacityProperty, fade);
+    }
+
     /// <summary>Track change: clear immediately so the previous song's lines never linger.</summary>
     public void Apply(Track? track)
     {
@@ -132,6 +150,10 @@ public partial class OverlayWindow : Window
             var current = index >= 0 ? _doc.Lines[index].Text : string.Empty;
             CurrLine.Text = current;
             SingleLinePanel.Text = current;
+
+            // Crossfade the current line on change only; the progress fill below
+            // runs every tick and must not animate the text.
+            FadeInCurrentLine();
 
             if (_settings.Mode == DisplayMode.MultiLine)
             {
