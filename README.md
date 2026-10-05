@@ -8,7 +8,7 @@ from its edges, gets out of the way with a click-through mode, and works offline
 
 ## Status
 
-Implemented. All 11 tasks are done, and `dotnet test` passes 54 tests. The design lives in
+Implemented. All 11 tasks are done, and `dotnet test` passes 58 tests. The design lives in
 [`docs/superpowers/specs/2026-10-05-apm-lyrics-design.md`](docs/superpowers/specs/2026-10-05-apm-lyrics-design.md).
 
 ## How it works
