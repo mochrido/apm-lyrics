@@ -147,6 +147,12 @@ And `tests/APMLyrics.Tests/APMLyrics.Tests.csproj`:
   <ItemGroup>
     <ProjectReference Include="..\..\src\APMLyrics\APMLyrics.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Synthetic lookup payload for CatalogClientTests; must sit next to the test assembly.
+         Without this the fixture never reaches AppContext.BaseDirectory and 4 tests fail.
+         Use Update, not Include: Include triggers NETSDK1022 duplicate-items. -->
+    <None Update="fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
 ```
 The test project must target the same Windows TFM and enable WPF, because it references a WPF assembly.
@@ -1500,10 +1506,22 @@ public sealed class CatalogClient : ICatalogClient
         TrackInfo? info = null;
         try
         {
-            using var client = _handler is null ? Shared : new HttpClient(_handler);
             var url = $"https://itunes.apple.com/lookup?id={songId}";
-            var json = await client.GetStringAsync(url, ct);
-            info = Parse(json);
+            if (_handler is null)
+            {
+                // Shared is process-wide: it must NOT be disposed here, or every
+                // lookup after the first one would fail with ObjectDisposedException
+                // and the app would silently serve nothing but warm entries.
+                info = Parse(await Shared.GetStringAsync(url, ct));
+            }
+            else
+            {
+                // disposeHandler: false: the handler is owned by the caller
+                // (a test seam); disposing it here would kill every later
+                // lookup that reuses the same handler.
+                using var client = new HttpClient(_handler, disposeHandler: false);
+                info = Parse(await client.GetStringAsync(url, ct));
+            }
         }
         catch (Exception)
         {
@@ -1621,7 +1639,6 @@ namespace APMLyrics.Core;
 public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
 {
     private FileSystemWatcher? _watcher;
-    private string? _watchedRoot;
     private readonly string? _explicitRoot;
 
     public AppleLyricsCache(string? cacheRoot = null)
@@ -1653,7 +1670,6 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
             };
             _watcher.Created += (_, e) => RaiseIfValid(e.FullPath);
             _watcher.Changed += (_, e) => RaiseIfValid(e.FullPath);
-            _watchedRoot = root;
         }
         catch (Exception)
         {
@@ -1743,7 +1759,6 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
     {
         _watcher?.Dispose();
         _watcher = null;
-        _watchedRoot = null;
     }
 }
 ```
@@ -1789,7 +1804,7 @@ namespace APMLyrics.Tests;
 public class LyricsResolverTests
 {
     private const string DanTtml = """
-    <tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en"><body dur="5:05.718">
+    <tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en"><body dur="5:06.000">
       <div><p begin="1" end="2">dan line one</p></div>
     </body></tt>
     """;
@@ -1828,6 +1843,11 @@ public class LyricsResolverTests
         // duration ordering happens to agree with the right answer; that fixture
         // could not detect a broken title comparison. Spec section 2.5 records
         // the real measurements; this fixture perturbs them to be load-bearing.)
+        // Dan's TTML body is nudged so it is the NEARER match to the played
+        // 306.0s (the matcher orders by TTML body length, not the catalog
+        // duration), while the played title is Spoiled. Duration alone would
+        // therefore resolve to the wrong song, and only the title key can reach
+        // the asserted lyrics id.
         var catalog = new FakeCatalog();
         catalog.Answers["AP_1872239911"] = new TrackInfo("Dan", "Noah Kahan", TimeSpan.FromSeconds(306.0));
         catalog.Answers["AP_1872239909"] = new TrackInfo("Spoiled", "Noah Kahan", TimeSpan.FromSeconds(306.066));
