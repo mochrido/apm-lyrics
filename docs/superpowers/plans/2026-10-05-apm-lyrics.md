@@ -673,8 +673,12 @@ public sealed class PlaybackClock
         }
     }
 
-    public void Pause() => _playing = false;
-    public void Resume() => _playing = true;
+    // The displayed (interpolated) position is committed into the anchor before
+    // the play flag flips, so pausing or resuming never jumps the position back
+    // to the last coarse SMTC tick. A bare flag flip would do exactly that, and
+    // the "Stops_interpolating_while_paused" test below catches it.
+    public void Pause() => Sync(Position, isPlaying: false, rate: _rate);
+    public void Resume() => Sync(Position, isPlaying: true, rate: _rate);
 
     private static TimeSpan Scale(TimeSpan delta, double rate)
         => TimeSpan.FromTicks((long)(delta.Ticks * rate));
@@ -738,7 +742,7 @@ public static class LineWindow
 - [ ] **Step 6: Run to verify it passes**
 
 Run: `dotnet test --filter "PlaybackClockTests|LineWindowTests"`
-Expected: PASS, 13 tests.
+Expected: PASS, 18 tests.
 
 - [ ] **Step 7: Commit**
 
@@ -2157,7 +2161,27 @@ public static class ClickThrough
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <TextBlock x:Name="PrevLine" Grid.Row="0" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="CurrLine" Grid.Row="1" TextAlignment="Center" TextWrapping="Wrap" Margin="0,6"/>
+                <StackPanel Grid.Row="1" Margin="0,6">
+                    <TextBlock x:Name="CurrLine" TextAlignment="Center" TextWrapping="Wrap"/>
+                    <!-- Progress fill for the current line. LineWindow.Progress drives
+                         ProgressScale.ScaleX each tick, so spec 4.3's "progress fraction
+                         drives the progress fill" is implemented rather than left as an
+                         unused helper. A 2px rule is deliberately subtle: it reads as
+                         timing, not as decoration. -->
+                    <Border x:Name="ProgressTrack"
+                            Height="2"
+                            Margin="0,6,0,0"
+                            CornerRadius="1"
+                            Opacity="0.5">
+                        <Rectangle x:Name="ProgressBar"
+                                   HorizontalAlignment="Stretch"
+                                   RenderTransformOrigin="0,0">
+                            <Rectangle.RenderTransform>
+                                <ScaleTransform x:Name="ProgressScale" ScaleX="0"/>
+                            </Rectangle.RenderTransform>
+                        </Rectangle>
+                    </Border>
+                </StackPanel>
                 <TextBlock x:Name="NextLine" Grid.Row="2" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
             </Grid>
             <TextBlock x:Name="SingleLinePanel" TextAlignment="Center" TextWrapping="Wrap" Visibility="Collapsed"/>
@@ -2211,6 +2235,14 @@ public partial class OverlayWindow : Window
         var backdropColor = (Color)ColorConverter.ConvertFromString(settings.BackdropColor);
         backdropColor.A = (byte)(Math.Clamp(settings.BackdropOpacity, 0, 1) * 255);
         Backdrop.Background = new SolidColorBrush(backdropColor);
+
+        // The progress rule needs explicit brushes: a Rectangle with no Fill is
+        // invisible, so leaving these unset would make the fill a silent no-op.
+        var lineColor = (Color)ColorConverter.ConvertFromString(settings.CurrentLineColor);
+        ProgressBar.Fill = new SolidColorBrush(lineColor);
+        var trackColor = lineColor;
+        trackColor.A = 60;
+        ProgressTrack.Background = new SolidColorBrush(trackColor);
 
         var multi = settings.Mode == DisplayMode.MultiLine;
         MultiLinePanel.Visibility = multi ? Visibility.Visible : Visibility.Collapsed;
@@ -2277,24 +2309,34 @@ public partial class OverlayWindow : Window
             NextLine.Text = string.Empty;
             CurrLine.Text = text;
             SingleLinePanel.Text = text;
+            ProgressScale.ScaleX = 0;
             return;
         }
 
         var index = LineWindow.CurrentIndex(_doc.Lines, _position);
-        if (index == _lastIndex)
-            return;
 
-        _lastIndex = index;
-
-        var current = index >= 0 ? _doc.Lines[index].Text : string.Empty;
-        CurrLine.Text = current;
-        SingleLinePanel.Text = current;
-
-        if (_settings.Mode == DisplayMode.MultiLine)
+        // Text changes only on a line change. This is what keeps an idle overlay
+        // from repainting text 4 times a second.
+        if (index != _lastIndex)
         {
-            PrevLine.Text = index - 1 >= 0 ? _doc.Lines[index - 1].Text : string.Empty;
-            NextLine.Text = index + 1 < _doc.Lines.Count ? _doc.Lines[index + 1].Text : string.Empty;
+            _lastIndex = index;
+
+            var current = index >= 0 ? _doc.Lines[index].Text : string.Empty;
+            CurrLine.Text = current;
+            SingleLinePanel.Text = current;
+
+            if (_settings.Mode == DisplayMode.MultiLine)
+            {
+                PrevLine.Text = index - 1 >= 0 ? _doc.Lines[index - 1].Text : string.Empty;
+                NextLine.Text = index + 1 < _doc.Lines.Count ? _doc.Lines[index + 1].Text : string.Empty;
+            }
         }
+
+        // The progress fill advances on every tick, independently of the text
+        // branch above. Setting a transform is cheap; it does not re-layout text.
+        ProgressScale.ScaleX = index >= 0
+            ? LineWindow.Progress(_doc.Lines[index], _position)
+            : 0;
     }
 
     private void Backdrop_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2648,8 +2690,9 @@ public partial class App : Application
         _cache.NewFile += _ =>
         {
             // Apple writes the lyric file mid-track: re-resolve so it appears
-            // without waiting for the next song.
-            ReResolve();
+            // without waiting for the next song. This fires on the watcher's
+            // thread, so hop to the UI thread before touching anything.
+            Dispatcher.InvokeAsync(() => ReResolve());
         };
 
         _playback = new SmtcPlaybackSource();
@@ -2667,17 +2710,30 @@ public partial class App : Application
 
     private void OnTrackChanged(Track? track)
     {
-        _overlay?.Apply(track); // clears lines immediately, no stale lyrics
-        _trackStartedAt = track is null ? null : DateTimeOffset.UtcNow;
-        if (track is not null)
-            ReResolve();
+        // Raised from the SMTC poll loop, which runs on a thread pool thread.
+        // Everything below touches WPF objects, so it must be marshalled to the
+        // UI thread or it throws at runtime (WPF verifies thread affinity on
+        // every access to a DispatcherObject).
+        Dispatcher.InvokeAsync(() =>
+        {
+            _overlay?.Apply(track); // clears lines immediately, no stale lyrics
+            _trackStartedAt = track is null ? null : DateTimeOffset.UtcNow;
+            if (track is not null)
+                ReResolve();
+        });
     }
 
     private void OnPositionChanged(TimeSpan position, bool isPlaying, double rate)
     {
-        _clock?.Sync(position, isPlaying, rate);
-        if (_clock is not null)
-            _overlay?.Tick(_clock.Position);
+        // Same thread-affinity reason as OnTrackChanged: this arrives on the poll
+        // thread and writes to the overlay. The hop is cheap; it is one queued
+        // operation at 4Hz, not a render loop.
+        Dispatcher.InvokeAsync(() =>
+        {
+            _clock?.Sync(position, isPlaying, rate);
+            if (_clock is not null)
+                _overlay?.Tick(_clock.Position);
+        });
     }
 
     private async void ReResolve()
@@ -2696,10 +2752,18 @@ public partial class App : Application
             if (token.IsCancellationRequested)
                 return;
 
-            if (doc is null)
-                _overlay.NoLyrics();
-            else
-                _overlay.Apply(doc);
+            // Apply/NoLyrics mutate WPF text, and the continuation after the await
+            // is not guaranteed to resume on the UI thread.
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (token.IsCancellationRequested)
+                    return;
+
+                if (doc is null)
+                    _overlay.NoLyrics();
+                else
+                    _overlay.Apply(doc);
+            });
         }
         catch (OperationCanceledException)
         {
