@@ -13,7 +13,7 @@ and reworks whatever was decided incorrectly.
 ## Rulings (chronological)
 
   Ruling: installed Microsoft.DotNet.SDK.8 (8.0.425) via winget myself rather than
-  letting a subagent do it — machine-level install is outside the worktree and the
+  letting a subagent do it - machine-level install is outside the worktree and the
   skill's stop-condition class. Cost if wrong: an unneeded SDK on the machine,
   trivially uninstalled.
 
@@ -38,7 +38,7 @@ and reworks whatever was decided incorrectly.
   stands; the plan text is defective here and matches the convention of all seven later
   test files, which each declare `using Xunit;`. Cost if wrong: one redundant directive.
 
-- Task 1: Ruling: the brief's SmokeTests.cs does not compile as written — the brief's test
+- Task 1: Ruling: the brief's SmokeTests.cs does not compile as written - the brief's test
   csproj drops the template's `<Using Include="Xunit" />` global using while the smoke test
   carries no using directive, so `[Fact]` is unresolved (CS0246, watched fail). Added
   `using Xunit;` to SmokeTests.cs, matching every later test file in the plan (all seven
