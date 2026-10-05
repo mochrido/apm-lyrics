@@ -68,7 +68,17 @@ public sealed class LyricsResolver
         if (valueEnd < 0)
             return TimeSpan.Zero;
 
-        return TtmlParser.ParseTime(header[valueStart..valueEnd]);
+        try
+        {
+            return TtmlParser.ParseTime(header[valueStart..valueEnd]);
+        }
+        catch (Exception)
+        {
+            // A garbage or out-of-range dur is a miss, not a crash: same Zero as
+            // every other unparseable shape above, so ResolveAsync keeps its
+            // contract that a malformed document never throws.
+            return TimeSpan.Zero;
+        }
     }
 
     private static DateTimeOffset WrittenAt(string path)

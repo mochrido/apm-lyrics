@@ -29,12 +29,22 @@ public sealed class TrayIcon : IDisposable
             menu.Items.Add(item);
         }
 
-        Add("Show / hide overlay", () =>
+        var overlayItem = new System.Windows.Controls.MenuItem();
+        void SyncOverlayLabel()
+        {
+            overlayItem.Header = overlay.Visibility == Visibility.Visible
+                ? "Hide overlay"
+                : "Show overlay";
+        }
+
+        overlayItem.Click += (_, _) =>
         {
             overlay.Visibility = overlay.Visibility == Visibility.Visible
                 ? Visibility.Hidden
                 : Visibility.Visible;
-        });
+            SyncOverlayLabel();
+        };
+        menu.Items.Add(overlayItem);
 
         var clickThroughItem = new System.Windows.Controls.MenuItem();
         void SyncClickThroughLabel()
@@ -93,6 +103,7 @@ public sealed class TrayIcon : IDisposable
         Add("Quit", () => Application.Current.Shutdown());
 
         _icon.ContextMenu = menu;
+        SyncOverlayLabel();
         SyncClickThroughLabel();
         SyncModeLabel();
         _icon.ForceCreate();

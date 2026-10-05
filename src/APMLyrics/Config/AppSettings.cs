@@ -90,6 +90,10 @@ public static class AppSettingsStore
         TextColor = NormalizeColor(s.TextColor, AppSettings.Default.TextColor),
         CurrentLineColor = NormalizeColor(s.CurrentLineColor, AppSettings.Default.CurrentLineColor),
         BackdropColor = NormalizeColor(s.BackdropColor, AppSettings.Default.BackdropColor),
+        // An explicit JSON null is the one unrenderable value the corrupt-file
+        // catch in Load cannot see (the file parses), and new FontFamily(null)
+        // throws in the overlay on every launch; same fallback as the colours.
+        FontFamily = string.IsNullOrWhiteSpace(s.FontFamily) ? AppSettings.Default.FontFamily : s.FontFamily,
     };
 
     /// <summary>Returns the stored colour when it parses, else the field's default.</summary>

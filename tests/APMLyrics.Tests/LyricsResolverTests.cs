@@ -74,4 +74,29 @@ public class LyricsResolverTests
 
         Assert.Null(await resolver.ResolveAsync(track, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task A_malformed_body_duration_is_a_miss_not_a_crash()
+    {
+        // A garbage dur used to escape BodyDuration as a FormatException from
+        // outside ResolveAsync's try, breaking its own contract ("a malformed
+        // document is a miss, not a crash"). Either a null result or a parsed
+        // document is acceptable here; a thrown exception is the failure.
+        var cache = new FakeCache();
+        cache.Candidates.Add(new Candidate("bad-dur.json", "AP_1872239909", """
+        <tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en"><body dur="not-a-time">
+          <div><p begin="1" end="2">spoiled line one</p></div>
+        </body></tt>
+        """));
+
+        var catalog = new FakeCatalog();
+        catalog.Answers["AP_1872239909"] = new TrackInfo("Spoiled", "Noah Kahan", TimeSpan.FromSeconds(306.066));
+
+        var resolver = new LyricsResolver(cache, catalog);
+        var track = new Track("Spoiled", "Noah Kahan - The Great Divide", "The Great Divide", TimeSpan.FromSeconds(306.066), true);
+
+        var doc = await resolver.ResolveAsync(track, CancellationToken.None);
+
+        Assert.True(doc is null || doc.Lines.Count > 0);
+    }
 }

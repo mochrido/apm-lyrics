@@ -129,6 +129,49 @@ public class CatalogClientTests
     }
 
     [Fact]
+    public async Task A_failed_lookup_is_not_remembered_so_it_can_succeed_later()
+    {
+        var cache = Path.Combine(Path.GetTempPath(), $"apm-cat-{Guid.NewGuid():N}.json");
+        try
+        {
+            var offline = new CatalogClient(new ThrowingHandler(), cache);
+            Assert.Null(await offline.LookupAsync("AP_1872239909", CancellationToken.None));
+
+            // A fresh client over the SAME cache file: the failed lookup must not
+            // have been written to disk as a permanent null, so going back online
+            // still resolves the track instead of serving the stored failure.
+            var handler = new StubHandler(Body);
+            var online = new CatalogClient(handler, cache);
+            var info = await online.LookupAsync("AP_1872239909", CancellationToken.None);
+
+            Assert.NotNull(info);
+            Assert.Equal("Spoiled", info!.Title);
+            Assert.Equal(1, handler.Calls); // the network was tried again
+        }
+        finally { File.Delete(cache); }
+    }
+
+    [Fact]
+    public async Task A_completed_lookup_with_no_result_is_not_looked_up_again()
+    {
+        var cache = Path.Combine(Path.GetTempPath(), $"apm-cat-{Guid.NewGuid():N}.json");
+        try
+        {
+            var handler = new StubHandler("""{"resultCount":0,"results":[]}""");
+            var client = new CatalogClient(handler, cache);
+
+            Assert.Null(await client.LookupAsync("AP_1872239909", CancellationToken.None));
+            Assert.Null(await client.LookupAsync("AP_1872239909", CancellationToken.None));
+
+            // A completed lookup that found nothing IS remembered: that is the
+            // negative cache. MX_ ids never resolve, and retrying them over HTTP
+            // on every track change would make the offline path worse.
+            Assert.Equal(1, handler.Calls);
+        }
+        finally { File.Delete(cache); }
+    }
+
+    [Fact]
     public async Task One_injected_handler_keeps_working_across_lookups()
     {
         // The client must not dispose the handler it was handed: that handler is

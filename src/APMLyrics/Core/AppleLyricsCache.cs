@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -116,9 +117,14 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
             var text = ttml.GetString() ?? string.Empty;
             return text.Length == 0 ? null : new Candidate(path, lyricsId, text);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return null; // a half-written file is skipped, not fatal
+            // Spec section 7: a malformed cache file is skipped, logged at
+            // debug, and the next candidate is tried. Half-written files are
+            // normal here (Apple writes them mid-track), so this is routine,
+            // not an error worth surfacing to the user.
+            Debug.WriteLine($"Skipping malformed lyric cache file {path}: {ex.Message}");
+            return null;
         }
     }
 

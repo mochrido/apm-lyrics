@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
@@ -66,6 +67,7 @@ public sealed class CatalogClient : ICatalogClient
             return null;
 
         TrackInfo? info = null;
+        var completed = false;
         try
         {
             var url = $"https://itunes.apple.com/lookup?id={songId}";
@@ -84,17 +86,31 @@ public sealed class CatalogClient : ICatalogClient
                 using var client = new HttpClient(_handler, disposeHandler: false);
                 info = Parse(await client.GetStringAsync(url, ct));
             }
+            completed = true; // set on the success path only, never in the catch
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            info = null; // offline or malformed: degrade, do not throw
+            // Offline or malformed: degrade, do not throw. This failure is NOT
+            // remembered below: a cached null would persist on disk and be
+            // restored on every later start, so the track could never resolve
+            // again even after the network comes back. It must be retried.
+            Debug.WriteLine($"Catalog lookup failed for {lyricsId}: {ex.Message}");
+            info = null;
         }
 
-        lock (_gate)
+        // Only a COMPLETED lookup is remembered (success, or a clean negative
+        // that found nothing). A completed negative must stay cached: an AP_ id
+        // that resolves to an empty result set would otherwise be retried over
+        // HTTP on every track change, which is worse for the offline path, not
+        // better.
+        if (completed)
         {
-            _memory[lyricsId] = info;
+            lock (_gate)
+            {
+                _memory[lyricsId] = info;
+            }
+            SaveDiskCache();
         }
-        SaveDiskCache();
         return info;
     }
 

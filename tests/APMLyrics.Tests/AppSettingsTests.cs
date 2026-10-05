@@ -90,6 +90,26 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void A_null_font_family_falls_back_to_the_default()
+    {
+        var path = TempPath();
+        try
+        {
+            // An explicit JSON null survives deserialization (unlike an empty
+            // string, a missing key, or a wrong type), and a null FontFamily
+            // makes new FontFamily(...) throw in the overlay on every launch.
+            // The file parses cleanly, so the corrupt-file catch in Load()
+            // never fires and Sanitize is the only guard.
+            File.WriteAllText(path, """{ "FontFamily": null }""");
+
+            var loaded = AppSettingsStore.Load(path);
+
+            Assert.Equal(AppSettings.Default.FontFamily, loaded.FontFamily);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void Backdrop_opacity_stays_in_range()
     {
         var path = TempPath();
