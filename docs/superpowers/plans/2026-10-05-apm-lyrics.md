@@ -1436,11 +1436,11 @@ Expected: FAIL, `CatalogClient` does not exist.
 `src/APMLyrics/Core/CatalogClient.cs`:
 
 ```csharp
+using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-using System.IO;
 namespace APMLyrics.Core;
 
 /// <summary>Seam so the resolver can be tested without touching the real cache directory.</summary>
@@ -1622,9 +1622,9 @@ public sealed class CatalogClient : ICatalogClient
 `src/APMLyrics/Core/AppleLyricsCache.cs`:
 
 ```csharp
+using System.IO;
 using System.Text.Json;
 
-using System.IO;
 namespace APMLyrics.Core;
 
 /// <summary>
@@ -1652,7 +1652,7 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
 
     /// <summary>
     /// Creates the watcher if a cache root is now resolvable and none is attached
-    /// yet. Safe to call repeatedly; it attaches at most once per root.
+    /// yet. Safe to call repeatedly; it attaches at most once.
     /// </summary>
     private void EnsureWatcher()
     {
