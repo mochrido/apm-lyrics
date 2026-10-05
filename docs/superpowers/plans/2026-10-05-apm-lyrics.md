@@ -1161,9 +1161,9 @@ Expected: FAIL, `AppSettings` does not exist.
 `src/APMLyrics/Config/AppSettings.cs`:
 
 ```csharp
+using System.IO;
 using System.Text.Json;
 
-using System.IO;
 namespace APMLyrics.Config;
 
 public enum DisplayMode
@@ -1836,18 +1836,12 @@ public class LyricsResolverTests
         cache.Candidates.Add(new Candidate("dan.json", "AP_1872239911", DanTtml));
         cache.Candidates.Add(new Candidate("spoiled.json", "AP_1872239909", SpoiledTtml));
 
-        // The catalog durations are set so Dan is the NEARER body match to the
-        // played 306.0s, while the played title is Spoiled. Duration alone would
-        // therefore resolve to the wrong song, and only the title key can reach
-        // the asserted lyrics id. (The real pair is 305.718 vs 306.066, where
-        // duration ordering happens to agree with the right answer; that fixture
-        // could not detect a broken title comparison. Spec section 2.5 records
-        // the real measurements; this fixture perturbs them to be load-bearing.)
         // Dan's TTML body is nudged so it is the NEARER match to the played
         // 306.0s (the matcher orders by TTML body length, not the catalog
         // duration), while the played title is Spoiled. Duration alone would
         // therefore resolve to the wrong song, and only the title key can reach
-        // the asserted lyrics id.
+        // the asserted lyrics id. The real measurements are recorded in spec
+        // section 2.5; this fixture perturbs them to be load-bearing.
         var catalog = new FakeCatalog();
         catalog.Answers["AP_1872239911"] = new TrackInfo("Dan", "Noah Kahan", TimeSpan.FromSeconds(306.0));
         catalog.Answers["AP_1872239909"] = new TrackInfo("Spoiled", "Noah Kahan", TimeSpan.FromSeconds(306.066));
@@ -2326,8 +2320,11 @@ public partial class OverlayWindow : Window
         MultiLinePanel.Visibility = multi ? Visibility.Visible : Visibility.Collapsed;
         SingleLinePanel.Visibility = multi ? Visibility.Collapsed : Visibility.Visible;
 
-        if (Width <= 0) Width = settings.Width;
-        if (Height <= 0) Height = settings.Height;
+        // A fresh Window reports NaN for Width and Height, not 0. NaN fails every
+        // comparison, so the guard must test for it explicitly or a window that
+        // was never given an explicit size silently keeps none of the settings.
+        if (double.IsNaN(Width) || Width <= 0) Width = settings.Width;
+        if (double.IsNaN(Height) || Height <= 0) Height = settings.Height;
 
         _lastIndex = -2; // force a refresh with the new styling
         Render();
@@ -2478,6 +2475,39 @@ git add -A && git commit -m "feat: add always-on-top overlay window with drag, r
 - Produces:
   - `class TrayIcon : IDisposable` constructed with `TrayIcon(OverlayWindow overlay, Func<AppSettings> get, Action<AppSettings> set)`; wires show/hide, click-through toggle, display-mode toggle, settings, quit.
   - `class SettingsWindow : Window` with `SettingsWindow(AppSettings settings)`, `event Action<AppSettings> Applied`.
+  - `void OverlayWindow.FadeInCurrentLine()` on the overlay, plus a call to it from `Render()` on line change, satisfying spec section 5.2's "short opacity crossfade on line change". The dials are ENERGY 2 / RHYTHM 1 / MOTION 1, so the fade is brief (about 180ms) and only on a line change, never on the per-tick progress update.
+
+- [ ] **Step 0: Add the spec 5.2 line-change crossfade to the overlay**
+
+In `src/APMLyrics/Ui/OverlayWindow.xaml.cs`, add this method next to `SetClickThrough`:
+
+```csharp
+    /// <summary>
+    /// Spec section 5.2: a short opacity crossfade on line change. Deliberately
+    /// brief and applied only when the lyric line advances, so the MOTION 1 dial
+    /// holds and the reading surface never feels animated. One animation, not a
+    /// dip-and-return pair: BeginAnimation on the same property replaces the
+    /// previous animation, so a second call would silently cancel the first.
+    /// </summary>
+    public void FadeInCurrentLine()
+    {
+        var fade = new System.Windows.Media.Animation.DoubleAnimation
+        {
+            From = 0.35,
+            To = 1.0,
+            Duration = TimeSpan.FromMilliseconds(180),
+        };
+        CurrLine.BeginAnimation(OpacityProperty, fade);
+    }
+```
+
+Then in `Render()`, inside the `if (index != _lastIndex)` branch, after the `CurrLine.Text` assignment:
+
+```csharp
+            // Crossfade the current line on change only; the progress fill below
+            // runs every tick and must not animate the text.
+            FadeInCurrentLine();
+```
 
 - [ ] **Step 1: Add the tray package**
 
