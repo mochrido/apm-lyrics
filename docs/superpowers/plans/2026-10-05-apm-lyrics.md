@@ -1226,6 +1226,26 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void A_null_font_family_falls_back_to_the_default()
+    {
+        var path = TempPath();
+        try
+        {
+            // An explicit JSON null survives deserialization (unlike an empty
+            // string, a missing key, or a wrong type), and a null FontFamily
+            // makes new FontFamily(...) throw in the overlay on every launch.
+            // The file parses cleanly, so the corrupt-file catch in Load()
+            // never fires and Sanitize is the only guard.
+            File.WriteAllText(path, """{ "FontFamily": null }""");
+
+            var loaded = AppSettingsStore.Load(path);
+
+            Assert.Equal(AppSettings.Default.FontFamily, loaded.FontFamily);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void Backdrop_opacity_stays_in_range()
     {
         var path = TempPath();
@@ -1349,6 +1369,10 @@ public static class AppSettingsStore
         TextColor = NormalizeColor(s.TextColor, AppSettings.Default.TextColor),
         CurrentLineColor = NormalizeColor(s.CurrentLineColor, AppSettings.Default.CurrentLineColor),
         BackdropColor = NormalizeColor(s.BackdropColor, AppSettings.Default.BackdropColor),
+        // An explicit JSON null is the one unrenderable value the corrupt-file
+        // catch in Load cannot see (the file parses), and new FontFamily(null)
+        // throws in the overlay on every launch; same fallback as the colours.
+        FontFamily = string.IsNullOrWhiteSpace(s.FontFamily) ? AppSettings.Default.FontFamily : s.FontFamily,
     };
 
     /// <summary>Returns the stored colour when it parses, else the field's default.</summary>
@@ -1559,6 +1583,49 @@ public class CatalogClientTests
     }
 
     [Fact]
+    public async Task A_failed_lookup_is_not_remembered_so_it_can_succeed_later()
+    {
+        var cache = Path.Combine(Path.GetTempPath(), $"apm-cat-{Guid.NewGuid():N}.json");
+        try
+        {
+            var offline = new CatalogClient(new ThrowingHandler(), cache);
+            Assert.Null(await offline.LookupAsync("AP_1872239909", CancellationToken.None));
+
+            // A fresh client over the SAME cache file: the failed lookup must not
+            // have been written to disk as a permanent null, so going back online
+            // still resolves the track instead of serving the stored failure.
+            var handler = new StubHandler(Body);
+            var online = new CatalogClient(handler, cache);
+            var info = await online.LookupAsync("AP_1872239909", CancellationToken.None);
+
+            Assert.NotNull(info);
+            Assert.Equal("Spoiled", info!.Title);
+            Assert.Equal(1, handler.Calls); // the network was tried again
+        }
+        finally { File.Delete(cache); }
+    }
+
+    [Fact]
+    public async Task A_completed_lookup_with_no_result_is_not_looked_up_again()
+    {
+        var cache = Path.Combine(Path.GetTempPath(), $"apm-cat-{Guid.NewGuid():N}.json");
+        try
+        {
+            var handler = new StubHandler("""{"resultCount":0,"results":[]}""");
+            var client = new CatalogClient(handler, cache);
+
+            Assert.Null(await client.LookupAsync("AP_1872239909", CancellationToken.None));
+            Assert.Null(await client.LookupAsync("AP_1872239909", CancellationToken.None));
+
+            // A completed lookup that found nothing IS remembered: that is the
+            // negative cache. MX_ ids never resolve, and retrying them over HTTP
+            // on every track change would make the offline path worse.
+            Assert.Equal(1, handler.Calls);
+        }
+        finally { File.Delete(cache); }
+    }
+
+    [Fact]
     public async Task One_injected_handler_keeps_working_across_lookups()
     {
         // The client must not dispose the handler it was handed: that handler is
@@ -1597,6 +1664,7 @@ Expected: FAIL, `CatalogClient` does not exist.
 `src/APMLyrics/Core/CatalogClient.cs`:
 
 ```csharp
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
@@ -1665,6 +1733,7 @@ public sealed class CatalogClient : ICatalogClient
             return null;
 
         TrackInfo? info = null;
+        var completed = false;
         try
         {
             var url = $"https://itunes.apple.com/lookup?id={songId}";
@@ -1683,17 +1752,31 @@ public sealed class CatalogClient : ICatalogClient
                 using var client = new HttpClient(_handler, disposeHandler: false);
                 info = Parse(await client.GetStringAsync(url, ct));
             }
+            completed = true; // set on the success path only, never in the catch
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            info = null; // offline or malformed: degrade, do not throw
+            // Offline or malformed: degrade, do not throw. This failure is NOT
+            // remembered below: a cached null would persist on disk and be
+            // restored on every later start, so the track could never resolve
+            // again even after the network comes back. It must be retried.
+            Debug.WriteLine($"Catalog lookup failed for {lyricsId}: {ex.Message}");
+            info = null;
         }
 
-        lock (_gate)
+        // Only a COMPLETED lookup is remembered (success, or a clean negative
+        // that found nothing). A completed negative must stay cached: an AP_ id
+        // that resolves to an empty result set would otherwise be retried over
+        // HTTP on every track change, which is worse for the offline path, not
+        // better.
+        if (completed)
         {
-            _memory[lyricsId] = info;
+            lock (_gate)
+            {
+                _memory[lyricsId] = info;
+            }
+            SaveDiskCache();
         }
-        SaveDiskCache();
         return info;
     }
 
@@ -1783,6 +1866,7 @@ public sealed class CatalogClient : ICatalogClient
 `src/APMLyrics/Core/AppleLyricsCache.cs`:
 
 ```csharp
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -1901,9 +1985,14 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
             var text = ttml.GetString() ?? string.Empty;
             return text.Length == 0 ? null : new Candidate(path, lyricsId, text);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return null; // a half-written file is skipped, not fatal
+            // Spec section 7: a malformed cache file is skipped, logged at
+            // debug, and the next candidate is tried. Half-written files are
+            // normal here (Apple writes them mid-track), so this is routine,
+            // not an error worth surfacing to the user.
+            Debug.WriteLine($"Skipping malformed lyric cache file {path}: {ex.Message}");
+            return null;
         }
     }
 
@@ -2033,6 +2122,31 @@ public class LyricsResolverTests
 
         Assert.Null(await resolver.ResolveAsync(track, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task A_malformed_body_duration_is_a_miss_not_a_crash()
+    {
+        // A garbage dur used to escape BodyDuration as a FormatException from
+        // outside ResolveAsync's try, breaking its own contract ("a malformed
+        // document is a miss, not a crash"). Either a null result or a parsed
+        // document is acceptable here; a thrown exception is the failure.
+        var cache = new FakeCache();
+        cache.Candidates.Add(new Candidate("bad-dur.json", "AP_1872239909", """
+        <tt xmlns="http://www.w3.org/ns/ttml" xml:lang="en"><body dur="not-a-time">
+          <div><p begin="1" end="2">spoiled line one</p></div>
+        </body></tt>
+        """));
+
+        var catalog = new FakeCatalog();
+        catalog.Answers["AP_1872239909"] = new TrackInfo("Spoiled", "Noah Kahan", TimeSpan.FromSeconds(306.066));
+
+        var resolver = new LyricsResolver(cache, catalog);
+        var track = new Track("Spoiled", "Noah Kahan - The Great Divide", "The Great Divide", TimeSpan.FromSeconds(306.066), true);
+
+        var doc = await resolver.ResolveAsync(track, CancellationToken.None);
+
+        Assert.True(doc is null || doc.Lines.Count > 0);
+    }
 }
 ```
 
@@ -2116,7 +2230,17 @@ public sealed class LyricsResolver
         if (valueEnd < 0)
             return TimeSpan.Zero;
 
-        return TtmlParser.ParseTime(header[valueStart..valueEnd]);
+        try
+        {
+            return TtmlParser.ParseTime(header[valueStart..valueEnd]);
+        }
+        catch (Exception)
+        {
+            // A garbage or out-of-range dur is a miss, not a crash: same Zero as
+            // every other unparseable shape above, so ResolveAsync keeps its
+            // contract that a malformed document never throws.
+            return TimeSpan.Zero;
+        }
     }
 
     private static DateTimeOffset WrittenAt(string path)
@@ -2766,12 +2890,22 @@ public sealed class TrayIcon : IDisposable
             menu.Items.Add(item);
         }
 
-        Add("Show / hide overlay", () =>
+        var overlayItem = new System.Windows.Controls.MenuItem();
+        void SyncOverlayLabel()
+        {
+            overlayItem.Header = overlay.Visibility == Visibility.Visible
+                ? "Hide overlay"
+                : "Show overlay";
+        }
+
+        overlayItem.Click += (_, _) =>
         {
             overlay.Visibility = overlay.Visibility == Visibility.Visible
                 ? Visibility.Hidden
                 : Visibility.Visible;
-        });
+            SyncOverlayLabel();
+        };
+        menu.Items.Add(overlayItem);
 
         var clickThroughItem = new System.Windows.Controls.MenuItem();
         void SyncClickThroughLabel()
@@ -2830,6 +2964,7 @@ public sealed class TrayIcon : IDisposable
         Add("Quit", () => Application.Current.Shutdown());
 
         _icon.ContextMenu = menu;
+        SyncOverlayLabel();
         SyncClickThroughLabel();
         SyncModeLabel();
         _icon.ForceCreate();
