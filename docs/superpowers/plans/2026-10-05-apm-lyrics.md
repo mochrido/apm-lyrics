@@ -3149,6 +3149,7 @@ Run once per release on a real Apple Music session. Record the date and result.
 - [ ] With click-through on, use the tray menu to turn it off: the overlay is clickable again.
 - [ ] Open a maximized and a full-screen window: the overlay stays on top.
 - [ ] Switch to single-line mode: the overlay shows one line at the configured size.
+- [ ] With a song playing, open Settings from the tray and change the font family and the neighbour opacity: the overlay updates live as you change them, with no confirmation button to press.
 - [ ] Close and relaunch: position, size, mode, and colours restore.
 - [ ] If a second monitor at a different scale is available: the text is crisp on both.
 - [ ] Quit from the tray: the process exits with no orphaned window.
