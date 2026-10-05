@@ -2646,11 +2646,26 @@ public sealed class TrayIcon : IDisposable
         <TextBlock Text="Neighbour lines (0 to 4)" FontWeight="SemiBold"/>
         <Slider x:Name="Radius" Minimum="0" Maximum="4" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
 
+        <TextBlock Text="Font family" FontWeight="SemiBold"/>
+        <ComboBox x:Name="FontFamilyPicker" Margin="0,6,0,12"/>
+
         <TextBlock Text="Font size (10 to 96)" FontWeight="SemiBold"/>
-        <Slider x:Name="FontSize" Minimum="10" Maximum="96" TickFrequency="2" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+        <Slider x:Name="FontSizeSlider" Minimum="10" Maximum="96" TickFrequency="2" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
 
         <TextBlock Text="Backdrop opacity (higher is more readable)" FontWeight="SemiBold"/>
         <Slider x:Name="Backdrop" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
+
+        <TextBlock Text="Text colour (neighbour lines)" FontWeight="SemiBold"/>
+        <TextBox x:Name="TextColorBox" Margin="0,6,0,12"/>
+
+        <TextBlock Text="Current line colour" FontWeight="SemiBold"/>
+        <TextBox x:Name="CurrentLineColorBox" Margin="0,6,0,12"/>
+
+        <TextBlock Text="Backdrop colour" FontWeight="SemiBold"/>
+        <TextBox x:Name="BackdropColorBox" Margin="0,6,0,12"/>
+
+        <TextBlock Text="Neighbour line opacity (0 to 1)" FontWeight="SemiBold"/>
+        <Slider x:Name="NeighbourOpacity" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6,0,12"/>
 
         <TextBlock Text="Dim the neighbouring lines" FontWeight="SemiBold"/>
         <CheckBox x:Name="Dim" Margin="0,6,0,12"/>
@@ -2658,7 +2673,9 @@ public sealed class TrayIcon : IDisposable
         <TextBlock Text="Click-through (the tray menu can undo this)" FontWeight="SemiBold"/>
         <CheckBox x:Name="Through" Margin="0,6,0,16"/>
 
-        <Button x:Name="Apply" Content="Apply" Height="34" IsDefault="True"/>
+        <!-- Changes apply live (spec section 6), so a confirmation button would be a
+             dead control. This is a plain window close instead. -->
+        <Button x:Name="Close" Content="Close" Height="34" IsCancel="True"/>
     </StackPanel>
 </Window>
 ```
@@ -2682,14 +2699,52 @@ public partial class SettingsWindow : Window
 
         ModeMulti.IsChecked = settings.Mode == DisplayMode.MultiLine;
         ModeSingle.IsChecked = settings.Mode == DisplayMode.SingleLine;
-        FontSize.Value = settings.FontSize;
         Radius.Value = settings.NeighbourRadius;
+
+        // Font family dropdown: seeded from installed families, plus whatever the
+        // saved setting names in case it is no longer installed.
+        var families = System.Windows.Media.Fonts.SystemFontFamilies
+            .Select(f => f.Source)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (!families.Contains(settings.FontFamily, StringComparer.OrdinalIgnoreCase))
+            families.Insert(0, settings.FontFamily);
+        FontFamilyPicker.ItemsSource = families;
+        FontFamilyPicker.SelectedItem = families
+            .First(f => string.Equals(f, settings.FontFamily, StringComparison.OrdinalIgnoreCase));
+
+        FontSizeSlider.Value = settings.FontSize;
+        TextColorBox.Text = settings.TextColor;
+        CurrentLineColorBox.Text = settings.CurrentLineColor;
+        BackdropColorBox.Text = settings.BackdropColor;
+        NeighbourOpacity.Value = settings.NeighbourOpacity;
         Backdrop.Value = settings.BackdropOpacity;
         Dim.IsChecked = settings.DimNeighbours;
         Through.IsChecked = settings.ClickThrough;
 
-        Apply.Click += (_, _) => Applied?.Invoke(Build());
+        // Spec section 6: "Changes apply live." Every control reports a change the
+        // moment the user makes it, so the overlay updates without a confirmation
+        // step. There is no Apply button: with live updates it would be a control
+        // that does nothing (antislop R-26), so the window carries a Close instead.
+        ModeMulti.Checked += OnAnyChange;
+        ModeSingle.Checked += OnAnyChange;
+        Radius.ValueChanged += OnAnyChange;
+        FontFamilyPicker.SelectionChanged += OnAnyChange;
+        FontSizeSlider.ValueChanged += OnAnyChange;
+        TextColorBox.TextChanged += OnAnyChange;
+        CurrentLineColorBox.TextChanged += OnAnyChange;
+        BackdropColorBox.TextChanged += OnAnyChange;
+        NeighbourOpacity.ValueChanged += OnAnyChange;
+        Backdrop.ValueChanged += OnAnyChange;
+        Dim.Checked += OnAnyChange;
+        Dim.Unchecked += OnAnyChange;
+        Through.Checked += OnAnyChange;
+        Through.Unchecked += OnAnyChange;
+
+        Close.Click += (_, _) => Close();
     }
+
+    private void OnAnyChange(object sender, RoutedEventArgs e) => Applied?.Invoke(Build());
 
     public event Action<AppSettings>? Applied;
 
@@ -2697,8 +2752,13 @@ public partial class SettingsWindow : Window
     {
         Mode = ModeMulti.IsChecked == true ? DisplayMode.MultiLine : DisplayMode.SingleLine,
         NeighbourRadius = (int)Radius.Value,
-        FontSize = FontSize.Value,
+        FontFamily = FontFamilyPicker.SelectedItem as string ?? _initial.FontFamily,
+        FontSize = FontSizeSlider.Value,
+        TextColor = TextColorBox.Text,
+        CurrentLineColor = CurrentLineColorBox.Text,
+        BackdropColor = BackdropColorBox.Text,
         BackdropOpacity = Backdrop.Value,
+        NeighbourOpacity = NeighbourOpacity.Value,
         DimNeighbours = Dim.IsChecked == true,
         ClickThrough = Through.IsChecked == true,
     };
