@@ -12,8 +12,27 @@ public static class TrackIdentity
         if (string.IsNullOrEmpty(smtcArtist))
             return string.Empty;
 
-        var dash = smtcArtist.IndexOf(" - ", StringComparison.Ordinal);
+        // Apple does not use one dash. A real session reported
+        // "Daniel Caesar \u2014 Son Of Spergy" with U+2014, and the first version
+        // only looked for a hyphen, so the artist never split and every song
+        // with an album suffix failed to match its lyrics. Accept the dash
+        // family, each only when surrounded by spaces: "Jay-Z" is a name, not
+        // an artist/album join.
+        var dash = FindSpacedDash(smtcArtist);
         return dash < 0 ? smtcArtist.Trim() : smtcArtist[..dash].Trim();
+    }
+
+    /// <summary>Index of the first space-surrounded dash, or -1. Hyphen, en dash, em dash.</summary>
+    private static int FindSpacedDash(string s)
+    {
+        for (var i = 1; i < s.Length - 1; i++)
+        {
+            var c = s[i];
+            var isDash = c == '-' || c == '\u2013' || c == '\u2014';
+            if (isDash && s[i - 1] == ' ' && s[i + 1] == ' ')
+                return i;
+        }
+        return -1;
     }
 
     public static string Normalize(string s)
@@ -66,6 +85,14 @@ public static class LyricsMatcher
         var title = TrackIdentity.Normalize(track.Title);
         var artist = TrackIdentity.Normalize(TrackIdentity.SplitArtist(track.Artist));
 
+        // Measured on a real session: SMTC reports EndTime=0 when a track
+        // starts and fills it in about two seconds later. Zero therefore means
+        // "not reported yet", not "zero seconds long". Gating on it rejected
+        // every candidate (a 226s song sits 226s outside a 2s tolerance), and
+        // because the failed attempt was cached, no new song ever matched.
+        // When the length is unknown the name is the whole decision.
+        var durationKnown = track.Duration > TimeSpan.Zero;
+
         var exact = candidates
             .Where(c => c.Info is not null
                         && TrackIdentity.Normalize(c.Info.Title) == title
@@ -73,7 +100,7 @@ public static class LyricsMatcher
             .OrderBy(c => Math.Abs((c.BodyDuration - track.Duration).TotalSeconds))
             .FirstOrDefault();
 
-        if (exact is not null && WithinTolerance(exact, track))
+        if (exact is not null && (!durationKnown || WithinTolerance(exact, track)))
             return exact.Candidate;
 
         // Second tier: a file we cannot resolve by name, accepted only when it
@@ -83,7 +110,7 @@ public static class LyricsMatcher
             var fresh = candidates
                 .Where(c => c.Info is null)
                 .Where(c => Math.Abs((c.WrittenAt - trackStart.Value).TotalSeconds) <= ArrivalWindow.TotalSeconds)
-                .Where(c => Math.Abs((c.BodyDuration - track.Duration).TotalSeconds) <= DurationTolerance.TotalSeconds)
+                .Where(c => !durationKnown || Math.Abs((c.BodyDuration - track.Duration).TotalSeconds) <= DurationTolerance.TotalSeconds)
                 .OrderBy(c => Math.Abs((c.WrittenAt - trackStart.Value).TotalSeconds))
                 .FirstOrDefault();
 

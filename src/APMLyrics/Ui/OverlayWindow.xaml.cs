@@ -19,6 +19,11 @@ public partial class OverlayWindow : Window
     {
         InitializeComponent();
         ApplySettings(_settings);
+
+        // The overlay is borderless, so Windows has no non-client frame to ask
+        // for resize hit-test answers. Without this the window cannot be
+        // resized at all; see ResizeGrip for the measurement.
+        SourceInitialized += (_, _) => ResizeGrip.Attach(this);
     }
 
     /// <summary>Raised when the user moves or resizes, so settings can be persisted.</summary>
