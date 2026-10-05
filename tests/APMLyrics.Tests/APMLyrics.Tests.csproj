@@ -15,4 +15,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\APMLyrics\APMLyrics.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Synthetic lookup payload for CatalogClientTests; must sit next to the test assembly. -->
+    <None Update="fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
