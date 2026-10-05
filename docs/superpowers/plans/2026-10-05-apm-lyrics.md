@@ -815,9 +815,12 @@ public class LyricsMatcherTests
     public void Picks_the_title_and_artist_match_even_when_durations_collide()
     {
         // Spec section 2.5: Dan 305.718 and Spoiled 306.066 are 0.35s apart.
+        // Dan is deliberately the NEARER match to the played duration (306.0),
+        // so duration alone would choose the wrong song. Only the title
+        // comparison can pick Spoiled, which is what makes it load-bearing.
         var candidates = new[]
         {
-            Cand("AP_1872239911", "Dan", "Noah Kahan", 305.718),
+            Cand("AP_1872239911", "Dan", "Noah Kahan", 306.0),
             Cand("AP_1872239909", "Spoiled", "Noah Kahan", 306.066),
         };
         var track = Track("Spoiled", "Noah Kahan - The Great Divide", 306.0);
@@ -831,10 +834,13 @@ public class LyricsMatcherTests
     [Fact]
     public void Uses_duration_only_to_break_a_title_tie()
     {
+        // AP_b is FIRST in the list but AP_a is NEARER by duration. Reversing
+        // input order against duration order is what makes the OrderBy
+        // load-bearing: without it, FirstOrDefault would return AP_b.
         var candidates = new[]
         {
-            Cand("AP_a", "Dashboard", "Noah Kahan", 230.787),
             Cand("AP_b", "Dashboard", "Noah Kahan", 231.0),
+            Cand("AP_a", "Dashboard", "Noah Kahan", 230.787),
         };
         var track = Track("Dashboard", "Noah Kahan", 230.8);
 
