@@ -1596,19 +1596,39 @@ namespace APMLyrics.Core;
 /// Indexes Apple Music's local lyric cache and watches it for new files.
 /// Apple writes into rotating bucket directories, so this rescans rather than
 /// caching the directory listing forever (spec section 11, risk 1).
+/// The cache root is resolved lazily on every scan rather than captured at
+/// construction: if Apple Music is not running when this app starts, its cache
+/// directory may not exist yet, and a root frozen at construction time would
+/// leave the app showing "no lyrics" forever until restarted.
 /// </summary>
 public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
 {
-    private readonly FileSystemWatcher? _watcher;
-    private readonly string? _root;
+    private FileSystemWatcher? _watcher;
+    private string? _watchedRoot;
+    private readonly string? _explicitRoot;
 
     public AppleLyricsCache(string? cacheRoot = null)
     {
-        _root = cacheRoot ?? DefaultCacheRoot;
+        _explicitRoot = cacheRoot;
+        EnsureWatcher();
+    }
 
-        if (_root is not null && Directory.Exists(_root))
+    /// <summary>Fired when a new lyric file lands on disk mid-track.</summary>
+    public event Action<Candidate>? NewFile;
+
+    /// <summary>
+    /// Creates the watcher if a cache root is now resolvable and none is attached
+    /// yet. Safe to call repeatedly; it attaches at most once per root.
+    /// </summary>
+    private void EnsureWatcher()
+    {
+        var root = _explicitRoot ?? DefaultCacheRoot;
+        if (root is null || _watcher is not null || !Directory.Exists(root))
+            return;
+
+        try
         {
-            _watcher = new FileSystemWatcher(_root, "ttmlLyrics*.json")
+            _watcher = new FileSystemWatcher(root, "ttmlLyrics*.json")
             {
                 IncludeSubdirectories = true,
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
@@ -1616,11 +1636,14 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
             };
             _watcher.Created += (_, e) => RaiseIfValid(e.FullPath);
             _watcher.Changed += (_, e) => RaiseIfValid(e.FullPath);
+            _watchedRoot = root;
+        }
+        catch (Exception)
+        {
+            // A watcher that cannot be created is not fatal; Scan still works.
+            _watcher = null;
         }
     }
-
-    /// <summary>Fired when a new lyric file lands on disk mid-track.</summary>
-    public event Action<Candidate>? NewFile;
 
     /// <summary>The package cache root, or null when Apple Music has never run.</summary>
     public static string? DefaultCacheRoot
@@ -1645,11 +1668,16 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
     /// <summary>Reads every cached lyric file and returns what can be identified.</summary>
     public IReadOnlyList<Candidate> Scan()
     {
+        // Re-resolve the root and attach the watcher if it has appeared since the
+        // last call (Apple Music may have been launched after this app started).
+        EnsureWatcher();
+
+        var root = _explicitRoot ?? DefaultCacheRoot;
         var results = new List<Candidate>();
-        if (_root is null || !Directory.Exists(_root))
+        if (root is null || !Directory.Exists(root))
             return results;
 
-        foreach (var file in Directory.EnumerateFiles(_root, "ttmlLyrics*.json", SearchOption.AllDirectories))
+        foreach (var file in Directory.EnumerateFiles(root, "ttmlLyrics*.json", SearchOption.AllDirectories))
         {
             var candidate = Read(file);
             if (candidate is not null)
@@ -1694,7 +1722,12 @@ public sealed class AppleLyricsCache : IDisposable, IAppleLyricsCache
             NewFile?.Invoke(candidate);
     }
 
-    public void Dispose() => _watcher?.Dispose();
+    public void Dispose()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+        _watchedRoot = null;
+    }
 }
 ```
 
