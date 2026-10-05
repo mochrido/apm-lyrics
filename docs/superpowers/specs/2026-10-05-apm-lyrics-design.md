@@ -212,9 +212,14 @@ overlay costs almost nothing.
 ## 5. Overlay window
 
 A WPF `Window` with `WindowStyle=None`, `AllowsTransparency=true`, `Background=Transparent`,
-`Topmost=true`, `ShowInTaskbar=false`, and `ResizeMode=CanResizeWithGrip`. The last of these keeps
+`Topmost=true`, `ShowInTaskbar=false`, and `ResizeMode=CanResize`. The last of these keeps
 native edge and corner resize, including the 8px hit targets Windows users expect, with correct
 per-monitor DPI through a manifest declaring PerMonitorV2.
+
+Native resize comes from the `WS_THICKFRAME` window style, which `CanResize` sets;
+`CanResizeWithGrip` sets the same style bits and only adds a grip adornment that does not render
+on a borderless window, so the two values are functionally identical here and `CanResize` is the
+honest description of what is in use.
 
 **Drag.** `DragMove()` on left button press in the body, guarded by a try/catch for the
 `InvalidOperationException` it raises when the button is released early. Because the window is
