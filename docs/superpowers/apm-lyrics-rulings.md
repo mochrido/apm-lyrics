@@ -226,3 +226,40 @@ and reworks whatever was decided incorrectly.
   Ruling: the plan is what a future re-dispatch would read, so a stale mirror is a real
   (if invisible) defect; the wider audit convention replaces the narrow one from here on.
   Cost if wrong: none to shipped code; the plan is documentation.
+
+  RULING on finding (1)'s fix shape: I explicitly overrode the reviewer's literal
+  suggestion ("only cache non-null results"). That would delete the negative cache, and
+  this project's MX_ ids never resolve, so they would be re-fetched over HTTP on every
+  track change, regressing the offline path in a new way. The fix must distinguish a FAILED
+  lookup (never remember) from a COMPLETED empty lookup (remember). Cost if wrong: a
+  slightly more complex cache write; the alternative is a network call per unresolvable id
+  per track change, which is worse and contradicts the spec's offline story.
+  RULING on the disputed empty-state crossfade minor: the controller read the code and
+  believes it is a FALSE POSITIVE (the empty-state branch contains no fade call and no
+  opacity animation, so there is no fade for the animate flag to gate). Rather than
+  instruct the reviewer away or silently drop it, the fixer is required to MEASURE it and
+  change nothing if refuted, with the sampled opacity numbers in the report.
+  Cost if wrong: one extra measurement.
+  RULING on spec section 9's WPF-UI: recorded as DEFERRED in spec section 10 (4120643)
+  rather than adopting a UI dependency at the end of the run. A restyled settings window is
+  not worth un-reviewed scope on the eve of handover, and section 10 is the spec's own
+  mechanism for turning an omission into a choice. Cost if wrong: the settings window looks
+  plain, which is what 0.1.0 already shipped.
+
+  RULING on the disputed empty-state crossfade minor: the controller read the code and
+  believes it is a FALSE POSITIVE (the empty-state branch contains no fade call and no
+  opacity animation, so there is no fade for the animate flag to gate). Rather than
+  instruct the reviewer away or silently drop it, the fixer is required to MEASURE it and
+  change nothing if refuted, with the sampled opacity numbers in the report.
+  Cost if wrong: one extra measurement.
+  RULING on spec section 9's WPF-UI: recorded as DEFERRED in spec section 10 (4120643)
+  rather than adopting a UI dependency at the end of the run. A restyled settings window is
+  not worth un-reviewed scope on the eve of handover, and section 10 is the spec's own
+  mechanism for turning an omission into a choice. Cost if wrong: the settings window looks
+  plain, which is what 0.1.0 already shipped.
+
+  RULING on spec section 9's WPF-UI: recorded as DEFERRED in spec section 10 (4120643)
+  rather than adopting a UI dependency at the end of the run. A restyled settings window is
+  not worth un-reviewed scope on the eve of handover, and section 10 is the spec's own
+  mechanism for turning an omission into a choice. Cost if wrong: the settings window looks
+  plain, which is what 0.1.0 already shipped.
