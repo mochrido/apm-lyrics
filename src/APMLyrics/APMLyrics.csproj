@@ -1,7 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- Stays a library until Task 10 adds App.xaml, then switches to WinExe. -->
-    <OutputType>Library</OutputType>
+    <!-- A runnable app: the WPF SDK picks App.xaml up as the application
+         definition and generates the entry point. -->
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
