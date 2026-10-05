@@ -1227,9 +1227,10 @@ git add -A && git commit -m "feat: add settings model with tolerant load and sav
 **Interfaces:**
 - Consumes: `Core.Candidate`, `Core.TrackInfo`.
 - Produces:
-  - `class AppleLyricsCache` with `AppleLyricsCache(string? cacheRoot = null)`, `IReadOnlyList<Candidate> Scan()`, `event Action<Candidate> NewFile`, `static string? DefaultCacheRoot`.
-  - `class CatalogClient` with `CatalogClient(HttpMessageHandler? handler = null, string? cachePath = null)`, `Task<TrackInfo?> LookupAsync(string lyricsId, CancellationToken ct)`.
-  - `static string? CatalogClient.SongIdFromLyricsId(string lyricsId)` returns the numeric id for `AP_<int>` and null otherwise.
+  - `interface IAppleLyricsCache` with `IReadOnlyList<Candidate> Scan()` (declared here; Task 7's resolver consumes it).
+  - `interface ICatalogClient` with `Task<TrackInfo?> LookupAsync(string lyricsId, CancellationToken ct)` (declared here; Task 7's resolver consumes it).
+  - `class AppleLyricsCache : IDisposable, IAppleLyricsCache` with `AppleLyricsCache(string? cacheRoot = null)`, `IReadOnlyList<Candidate> Scan()`, `event Action<Candidate> NewFile`, `static string? DefaultCacheRoot`.
+  - `class CatalogClient : ICatalogClient` with `CatalogClient(HttpMessageHandler? handler = null, string? cachePath = null)`, `Task<TrackInfo?> LookupAsync(string lyricsId, CancellationToken ct)`.
 
 - [ ] **Step 1: Write the failing catalog tests**
 
@@ -1396,12 +1397,24 @@ using System.Text.Json.Serialization;
 
 namespace APMLyrics.Core;
 
+/// <summary>Seam so the resolver can be tested without touching the real cache directory.</summary>
+public interface IAppleLyricsCache
+{
+    IReadOnlyList<Candidate> Scan();
+}
+
+/// <summary>Seam so the resolver can be tested without a network.</summary>
+public interface ICatalogClient
+{
+    Task<TrackInfo?> LookupAsync(string lyricsId, CancellationToken ct);
+}
+
 /// <summary>
 /// Resolves an AP_ lyrics id to a real track through the public iTunes lookup.
 /// Every result is cached to disk, so after the first warm-up the app works offline.
 /// A network failure is never fatal: it returns null and the caller degrades.
 /// </summary>
-public sealed class CatalogClient
+public sealed class CatalogClient : ICatalogClient
 {
     private static readonly HttpClient Shared = new()
     {
@@ -1680,11 +1693,9 @@ git add -A && git commit -m "feat: add lyrics cache index and offline-tolerant c
 - Create: `src/APMLyrics/Playback/IPlaybackSource.cs`, `src/APMLyrics/Playback/SmtcPlaybackSource.cs`, `src/APMLyrics/Core/LyricsResolver.cs`
 
 **Interfaces:**
-- Consumes: `Core.Track`, `Core.Candidate`, `Core.LyricsMatcher`, `Core.TtmlParser`, `Core.CatalogClient`, `Core.AppleLyricsCache`.
+- Consumes: `Core.Track`, `Core.Candidate`, `Core.LyricsMatcher`, `Core.TtmlParser`, `Core.CatalogClient`, `Core.AppleLyricsCache`, `Core.IAppleLyricsCache`, `Core.ICatalogClient` (both interfaces declared in Task 6).
 - Produces:
   - `interface IPlaybackSource` with `event Action<Track?> TrackChanged`, `event Action<TimeSpan, bool, double> PositionChanged`, `Track? Current { get; }`, `void Start()`, `void Dispose()`.
-  - `interface IAppleLyricsCache` with `IReadOnlyList<Candidate> Scan()`.
-  - `interface ICatalogClient` with `Task<TrackInfo?> LookupAsync(string lyricsId, CancellationToken ct)`.
   - `class SmtcPlaybackSource : IPlaybackSource, IDisposable` (polls SMTC at 4Hz).
   - `class LyricsResolver` with `LyricsResolver(IAppleLyricsCache cache, ICatalogClient catalog)`, `Task<LyricsDoc?> ResolveAsync(Track track, CancellationToken ct, DateTimeOffset? trackStart = null)`.
   - `static TimeSpan LyricsResolver.BodyDuration(string ttml)` (internal, used by the resolver).
@@ -1778,18 +1789,6 @@ Expected: FAIL, `LyricsResolver` and `IAppleLyricsCache` do not exist.
 ```csharp
 namespace APMLyrics.Core;
 
-/// <summary>Seam so the resolver can be tested without touching the real cache directory.</summary>
-public interface IAppleLyricsCache
-{
-    IReadOnlyList<Candidate> Scan();
-}
-
-/// <summary>Seam so the resolver can be tested without a network.</summary>
-public interface ICatalogClient
-{
-    Task<TrackInfo?> LookupAsync(string lyricsId, CancellationToken ct);
-}
-
 /// <summary>
 /// Turns a playing track into lyrics: scan the cache, identify each candidate,
 /// let the matcher choose, then parse the winner. Never returns stale lyrics:
@@ -1874,7 +1873,7 @@ public sealed class LyricsResolver
 }
 ```
 
-Add to `src/APMLyrics/Core/CatalogClient.cs`'s class line: `public sealed class CatalogClient : ICatalogClient`.
+Add to `src/APMLyrics/Core/CatalogClient.cs`'s class line: `public sealed class CatalogClient : ICatalogClient`. (The `ICatalogClient` and `IAppleLyricsCache` interfaces are declared in Task 6 alongside their implementers, so this task only consumes them.)
 
 - [ ] **Step 4: Write the SMTC source**
 
