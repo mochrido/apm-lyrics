@@ -339,8 +339,11 @@ DPI-correct rendering on a second monitor at a different scale if one is availab
 
 Recorded so they are choices, not omissions: translations, karaoke syllable timing from a second
 source, global hotkeys, launch at login, custom themes, per-monitor profiles, Spotify and other
-SMTC players, lyric offset adjustment, a lyric search by title when the cache misses, and an
-Apple Music favorite or like button (which would need UI Automation, since SMTC does not expose it).
+SMTC players, lyric offset adjustment, a lyric search by title when the cache misses, an
+Apple Music favorite or like button (which would need UI Automation, since SMTC does not expose it),
+and WPF-UI for the settings window's modern control styling (section 9 named it; 0.1.0 ships stock
+WPF controls, which are functional but plain, and adopting a UI library would restyle the
+settings window for its own sake rather than the overlay's).
 
 ## 11. Open risks
 
