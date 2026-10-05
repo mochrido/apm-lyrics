@@ -26,6 +26,8 @@ public sealed record AppSettings
     public double Y { get; init; } = 100;
     public double Width { get; init; } = 560;
     public double Height { get; init; } = 160;
+    /// <summary>Neighbour lines shown either side of the current line in multi-line mode (spec section 6).</summary>
+    public int NeighbourRadius { get; init; } = 1;
 
     public static AppSettings Default { get; } = new();
 }
@@ -76,5 +78,8 @@ public static class AppSettingsStore
         FontSize = Math.Clamp(s.FontSize, 10, 96),
         Width = Math.Max(240, s.Width),
         Height = Math.Max(60, s.Height),
+        // Spec section 6 exposes the multi-line neighbour count; keep it to a
+        // range the overlay can actually render legibly.
+        NeighbourRadius = Math.Clamp(s.NeighbourRadius, 0, 4),
     };
 }
