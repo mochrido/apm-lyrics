@@ -17,6 +17,8 @@ click straight through when you need the desktop underneath.
 It reads the lyrics **Apple Music itself already downloaded to your PC**. It does not scrape
 Apple's servers, does not ask for your Apple ID, and keeps working when your connection drops.
 
+![APM Lyrics overlay showing three lyric lines](docs/images/screenshot-multiline.png)
+
 ---
 
 ## Install
