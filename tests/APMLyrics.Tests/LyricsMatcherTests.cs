@@ -202,6 +202,40 @@ public class LyricsMatcherTests
     }
 
     [Fact]
+    public void Accepts_a_file_written_just_before_the_track_starts()
+    {
+        // Apple pre-fetches lyrics slightly before SMTC reports the new track,
+        // so a small lead before trackStart is still this track's file.
+        var trackStart = DateTimeOffset.Parse("2026-10-05T14:00:00Z");
+        var candidates = new[]
+        {
+            Cand("AP_prefetch", null, null, 258.0, written: trackStart.AddSeconds(-1.5)),
+        };
+        var track = Track("Some Song", "Someone", 0);
+
+        var chosen = LyricsMatcher.Choose(track, candidates, trackStart);
+
+        Assert.Equal("AP_prefetch", chosen!.LyricsId);
+    }
+
+    [Fact]
+    public void Rejects_the_previous_songs_file_written_seconds_before_the_skip()
+    {
+        // Reproduces a real fast-skip session: the previous song's lyric file
+        // was written 11s before the user skipped to a new track. The old
+        // symmetric ±15s window matched it and showed the previous song's
+        // lyrics until the correct file arrived.
+        var trackStart = DateTimeOffset.Parse("2026-10-05T14:00:00Z");
+        var candidates = new[]
+        {
+            Cand("AP_previous", null, null, 226.283, written: trackStart.AddSeconds(-11)),
+        };
+        var track = Track("Different Song", "Someone Else", 0);
+
+        Assert.Null(LyricsMatcher.Choose(track, candidates, trackStart));
+    }
+
+    [Fact]
     public void Returns_null_when_nothing_matches_so_stale_lyrics_are_never_reused()
     {
         var candidates = new[] { Cand("AP_a", "Other Song", "Noah Kahan", 100.0) };

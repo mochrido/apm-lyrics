@@ -78,6 +78,11 @@ public static class LyricsMatcher
 {
     public static readonly TimeSpan DurationTolerance = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ArrivalWindow = TimeSpan.FromSeconds(15);
+    // Apple pre-fetches lyrics slightly before SMTC reports the new track, so
+    // the acceptance window opens a little BEFORE track start. It must not be
+    // symmetric though: on a fast skip, the previous song's file was also
+    // written seconds before the skip, and a symmetric window matched it.
+    private static readonly TimeSpan PrefetchLead = TimeSpan.FromSeconds(3);
 
     public static Candidate? Choose(
         Track track, IReadOnlyList<ResolvedCandidate> candidates, DateTimeOffset? trackStart = null)
@@ -109,7 +114,8 @@ public static class LyricsMatcher
         {
             var fresh = candidates
                 .Where(c => c.Info is null)
-                .Where(c => Math.Abs((c.WrittenAt - trackStart.Value).TotalSeconds) <= ArrivalWindow.TotalSeconds)
+                .Where(c => c.WrittenAt >= trackStart.Value - PrefetchLead)
+                .Where(c => c.WrittenAt <= trackStart.Value + ArrivalWindow)
                 .Where(c => !durationKnown || Math.Abs((c.BodyDuration - track.Duration).TotalSeconds) <= DurationTolerance.TotalSeconds)
                 .OrderBy(c => Math.Abs((c.WrittenAt - trackStart.Value).TotalSeconds))
                 .FirstOrDefault();

@@ -27,6 +27,22 @@ public sealed class PlaybackClock
 
     public PlaybackClock(ITimeSource time) => _time = time;
 
+    /// <summary>
+    /// Total reset for a track change. Sync can never move the anchor backwards
+    /// (that rule protects the display from late coarse ticks), so a new song
+    /// starting at 0:00 while the anchor sits at the old song's last position
+    /// needs this explicit wipe — otherwise the new track's lyrics are looked
+    /// up at the old position until the song plays past it.
+    /// </summary>
+    public void Reset()
+    {
+        _anchorPosition = TimeSpan.Zero;
+        _anchorAt = _time.Now;
+        _playing = false;
+        _rate = 1.0;
+        _lastReported = TimeSpan.Zero;
+    }
+
     public void Sync(TimeSpan position, bool isPlaying, double rate)
     {
         var candidate = _playing && _rate > 0

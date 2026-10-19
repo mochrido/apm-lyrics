@@ -100,4 +100,35 @@ public class PlaybackClockTests
         t.Now = TimeSpan.FromSeconds(1);
         Assert.True(clock.Position >= TimeSpan.FromSeconds(11));
     }
+
+    [Fact]
+    public void Reset_returns_the_clock_to_zero_for_a_new_track()
+    {
+        // A track change: the old song sat at 200s and the new one starts at 0.
+        // Sync alone cannot go backwards (that rule protects against late coarse
+        // ticks), so the reset must be explicit and total.
+        var t = new FakeTime();
+        var clock = new PlaybackClock(t);
+        clock.Sync(TimeSpan.FromSeconds(200), isPlaying: true, rate: 1.0);
+        t.Now = TimeSpan.FromSeconds(2);
+        _ = clock.Position; // 202s
+
+        clock.Reset();
+        t.Now = TimeSpan.FromSeconds(2);
+        Assert.Equal(TimeSpan.Zero, clock.Position);
+    }
+
+    [Fact]
+    public void Reset_accepts_the_new_track_first_tick_from_any_position()
+    {
+        // After Reset, the very next Sync must be able to jump forwards from
+        // zero (the normal path) — nothing of the old anchor may survive.
+        var t = new FakeTime();
+        var clock = new PlaybackClock(t);
+        clock.Sync(TimeSpan.FromSeconds(200), isPlaying: true, rate: 1.0);
+        clock.Reset();
+        clock.Sync(TimeSpan.FromSeconds(3), isPlaying: true, rate: 1.0);
+        t.Now = TimeSpan.FromMilliseconds(500);
+        Assert.Equal(TimeSpan.FromSeconds(3.5), clock.Position);
+    }
 }

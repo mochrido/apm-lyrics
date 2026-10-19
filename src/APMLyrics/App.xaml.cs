@@ -135,6 +135,10 @@ public partial class App : Application
         // every access to a DispatcherObject).
         Dispatcher.InvokeAsync(() =>
         {
+            // The clock must not carry the old song's position into the new one:
+            // Sync cannot move backwards, so without a reset the new track's
+            // lyrics would be looked up at the old position.
+            _clock?.Reset();
             _overlay?.Apply(track); // clears lines immediately, no stale lyrics
             _trackStartedAt = track is null ? null : DateTimeOffset.UtcNow;
             if (track is not null)
