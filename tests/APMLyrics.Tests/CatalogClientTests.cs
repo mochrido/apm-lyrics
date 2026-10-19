@@ -47,12 +47,67 @@ public class CatalogClientTests
     // iTunes track id and resolves through the same lookup. Observed on a real
     // session: "Mata Air (feat. Natasha Udu & Kamga)" was cached only as MO_1481804592.
     [InlineData("MO_1481804592", "1481804592")]
+    // Apple suffixes a language tag onto some lyrics ids ("AP_6801077492-id",
+    // "AP_1869189802-en"). Observed on a real session: "Adam" by Pamungkas was
+    // cached ONLY as AP_6801077492-id; without stripping the tag the id was
+    // unresolvable, the file fell to the timing-tier fallback, and the user
+    // saw "no lyrics" even though Apple Music showed them.
+    [InlineData("AP_6801077492-id", "6801077492")]
+    [InlineData("AP_1869189802-en", "1869189802")]
+    [InlineData("MO_1481804592-id", "1481804592")]
+    [InlineData("AP_6801077492-idxx", null)] // not a language tag shape
     [InlineData("MX_46242766-48516696", null)]
     [InlineData("", null)]
     [InlineData("AP_", null)]
     public void Extracts_a_song_id_only_from_the_ap_form(string lyricsId, string? expected)
     {
         Assert.Equal(expected, CatalogClient.SongIdFromLyricsId(lyricsId));
+    }
+
+    [Fact]
+    public async Task Search_finds_the_track_by_name_and_duration()
+    {
+        // Real session: "Biang Lara" by Perunggu was cached ONLY under an
+        // unresolvable MX_ id, so the id lookup could never name it. The
+        // iTunes search API can: term=Biang Lara Perunggu returns the track.
+        var body = """
+        {"resultCount":1,"results":[
+          {"wrapperType":"track","kind":"song","trackId":1760139225,
+           "artistName":"Perunggu","trackName":"Biang Lara",
+           "trackTimeMillis":240469}]}
+        """;
+        var cache = Path.Combine(Path.GetTempPath(), $"apm-cat-{Guid.NewGuid():N}.json");
+        try
+        {
+            var client = new CatalogClient(new StubHandler(body), cache);
+            var info = await client.SearchAsync("Biang Lara", "Perunggu", CancellationToken.None);
+
+            Assert.NotNull(info);
+            Assert.Equal("Biang Lara", info!.Title);
+            Assert.Equal("Perunggu", info.Artist);
+            Assert.Equal(240.469, info.Duration.TotalSeconds, 3);
+        }
+        finally { File.Delete(cache); }
+    }
+
+    [Fact]
+    public async Task Search_returns_null_when_no_result_matches_the_name()
+    {
+        // The search must not invent a match: a result whose title or artist
+        // disagrees with the query is a miss, not "close enough".
+        var body = """
+        {"resultCount":1,"results":[
+          {"wrapperType":"track","kind":"song","trackId":1,
+           "artistName":"Somebody Else","trackName":"Biang Lara",
+           "trackTimeMillis":240469}]}
+        """;
+        var cache = Path.Combine(Path.GetTempPath(), $"apm-cat-{Guid.NewGuid():N}.json");
+        try
+        {
+            var client = new CatalogClient(new StubHandler(body), cache);
+            Assert.Null(await client.SearchAsync("Biang Lara", "Perunggu", CancellationToken.None));
+        }
+        finally { File.Delete(cache); }
     }
 
     [Fact]

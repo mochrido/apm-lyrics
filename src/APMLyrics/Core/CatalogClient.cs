@@ -16,6 +16,9 @@ public interface IAppleLyricsCache
 public interface ICatalogClient
 {
     Task<TrackInfo?> LookupAsync(string lyricsId, CancellationToken ct);
+
+    /// <summary>Finds a track by name through the iTunes search API.</summary>
+    Task<TrackInfo?> SearchAsync(string title, string artist, CancellationToken ct);
 }
 
 /// <summary>
@@ -59,6 +62,21 @@ public sealed class CatalogClient : ICatalogClient
             return null;
 
         var id = lyricsId[prefixLength.Value..];
+
+        // Some ids carry a trailing language tag: "AP_6801077492-id",
+        // "AP_1869189802-en". The numeric part before the dash is the same
+        // iTunes track id, so the tag is stripped and the lookup proceeds.
+        // Exactly two ASCII letters after the dash — anything else (e.g. an
+        // MX_-style "46242766-48516696" pair, already excluded by prefix)
+        // is not a language tag and must not be mangled.
+        var dash = id.IndexOf('-');
+        if (dash >= 0)
+        {
+            var suffix = id[(dash + 1)..];
+            if (suffix.Length == 2 && suffix.All(char.IsAsciiLetter))
+                id = id[..dash];
+        }
+
         return id.Length > 0 && id.All(char.IsAsciiDigit) ? id : null;
     }
 
@@ -116,6 +134,81 @@ public sealed class CatalogClient : ICatalogClient
             lock (_gate)
             {
                 _memory[lyricsId] = info;
+            }
+            SaveDiskCache();
+        }
+        return info;
+    }
+
+    /// <summary>
+    /// Finds a track by title and artist through the iTunes search API. Used as
+    /// a fallback for lyric files whose id cannot be looked up (MX_ and other
+    /// unresolvable forms): the playing track's own name identifies the song.
+    /// A result is adopted only when both names match, normalized, so the
+    /// search can never invent a match.
+    /// </summary>
+    public async Task<TrackInfo?> SearchAsync(string title, string artist, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(artist))
+            return null;
+
+        var key = $"search:{title}|{artist}";
+        lock (_gate)
+        {
+            if (_memory.TryGetValue(key, out var cached))
+                return cached;
+        }
+
+        TrackInfo? info = null;
+        var completed = false;
+        try
+        {
+            var term = Uri.EscapeDataString($"{title} {artist}");
+            var url = $"https://itunes.apple.com/search?term={term}&entity=song&limit=5";
+            string json;
+            if (_handler is null)
+            {
+                json = await Shared.GetStringAsync(url, ct);
+            }
+            else
+            {
+                using var client = new HttpClient(_handler, disposeHandler: false);
+                json = await client.GetStringAsync(url, ct);
+            }
+
+            // A search response has the same shape as a lookup response; the
+            // difference is that it may hold several results, and only one whose
+            // names match the query may be adopted.
+            if (JsonSerializer.Deserialize<LookupResponse>(json)?.Results is { } results)
+            {
+                foreach (var r in results)
+                {
+                    if (r.TrackName is null || r.ArtistName is null)
+                        continue;
+                    if (TrackIdentity.Normalize(r.TrackName) != TrackIdentity.Normalize(title))
+                        continue;
+                    if (TrackIdentity.Normalize(r.ArtistName) != TrackIdentity.Normalize(artist))
+                        continue;
+                    var seconds = (r.TrackTimeMillis ?? 0) / 1000.0;
+                    info = new TrackInfo(r.TrackName, r.ArtistName, TimeSpan.FromSeconds(seconds));
+                    break;
+                }
+            }
+            completed = true;
+        }
+        catch (Exception ex)
+        {
+            // Offline or malformed: degrade, do not throw, and do not cache the
+            // failure (same reasoning as LookupAsync).
+            Debug.WriteLine($"Catalog search failed for '{title}': {ex.Message}");
+            info = null;
+        }
+
+        if (completed)
+        {
+            lock (_gate)
+            {
+                _memory[key] = info;
             }
             SaveDiskCache();
         }
