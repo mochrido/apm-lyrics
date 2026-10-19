@@ -1,5 +1,7 @@
 # APM Lyrics
 
+<img src="docs/images/logo-256.png" alt="APM Lyrics logo" width="96" align="left" style="border-radius:20px"/>
+
 **Synced lyrics for Apple Music, floating on top of everything else on your Windows desktop.**
 
 Apple Music shows its lyrics in a panel inside its own window. APM Lyrics takes the same lyrics

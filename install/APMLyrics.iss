@@ -14,6 +14,8 @@ SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayIcon={app}\APMLyrics.exe
+; Branding: the installer itself carries the app logo.
+SetupIconFile=..\src\APMLyrics\Assets\app.ico
 
 [Files]
 Source: "..\src\APMLyrics\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\*"; DestDir: "{app}"; Flags: recursesubdirs
