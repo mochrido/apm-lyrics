@@ -128,4 +128,33 @@ public class AppSettingsTests
         Assert.Contains("APMLyrics", AppSettingsStore.DefaultPath);
         Assert.EndsWith("settings.json", AppSettingsStore.DefaultPath);
     }
+
+    [Fact]
+    public void Old_settings_json_loads_with_lock_defaults()
+    {
+        var path = TempPath();
+        try
+        {
+            // A settings file from before the lock existed: no LockFontSize or
+            // LockedFontSize keys at all.
+            File.WriteAllText(path, """{ "Mode": "SingleLine", "FontSize": 22 }""");
+            var loaded = AppSettingsStore.Load(path);
+            Assert.False(loaded.LockFontSize);
+            Assert.Equal(28.0, loaded.LockedFontSize);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Locked_size_sanitized()
+    {
+        var path = TempPath();
+        try
+        {
+            File.WriteAllText(path, """{ "LockedFontSize": 500 }""");
+            var loaded = AppSettingsStore.Load(path);
+            Assert.Equal(96.0, loaded.LockedFontSize);
+        }
+        finally { File.Delete(path); }
+    }
 }

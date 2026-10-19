@@ -29,6 +29,10 @@ public sealed record AppSettings
     public double Height { get; init; } = 160;
     /// <summary>Neighbour lines shown either side of the current line in multi-line mode (spec section 6).</summary>
     public int NeighbourRadius { get; init; } = 1;
+    /// <summary>When true the font size is the user's LockedFontSize, not auto-fitted to the window.</summary>
+    public bool LockFontSize { get; init; }
+    /// <summary>The manual font size used while LockFontSize is on (DIPs, 10–96; no readability floor — a deliberate choice).</summary>
+    public double LockedFontSize { get; init; } = 28;
 
     public static AppSettings Default { get; } = new();
 }
@@ -77,6 +81,7 @@ public static class AppSettingsStore
         BackdropOpacity = Math.Clamp(s.BackdropOpacity, 0.0, 1.0),
         NeighbourOpacity = Math.Clamp(s.NeighbourOpacity, 0.0, 1.0),
         FontSize = Math.Clamp(s.FontSize, 10, 96),
+        LockedFontSize = Math.Clamp(s.LockedFontSize, 10, 96),
         // The overlay may be shrunk to a taskbar-height strip, so these floors
         // are the smallest a restored size may be rather than the old 240x60
         // reading-size minimum. The window measures the real taskbar height at
