@@ -176,4 +176,17 @@ public class LineWindowTests
             fittedSize: 14, width: 800, height: 400);
         Assert.Equal(5, rows);
     }
+
+    [Fact]
+    public void EffectiveRows_one_row_and_three_rows_disagree()
+    {
+        // Contract guard for LyricPanel: the shedding decision actually depends
+        // on available height, so a tight window and a roomy one disagree.
+        var tight = LineWindow.EffectiveRows(radius: 1, lineCount: 9, currentIndex: 4,
+            fittedSize: 14, width: 800, height: 30);
+        var roomy = LineWindow.EffectiveRows(radius: 1, lineCount: 9, currentIndex: 4,
+            fittedSize: 14, width: 800, height: 400);
+        Assert.Equal(1, tight);
+        Assert.Equal(3, roomy);
+    }
 }

@@ -1,0 +1,15 @@
+<UserControl x:Class="APMLyrics.Ui.LyricPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- The whole panel is centered both axes; per-line TextBlocks are generated
+         in code so the neighbour count can change with the fitted size. -->
+    <Grid>
+        <ScrollViewer x:Name="Scroller"
+                      VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="Lines"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"/>
+        </ScrollViewer>
+    </Grid>
+</UserControl>
