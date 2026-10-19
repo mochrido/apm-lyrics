@@ -49,14 +49,22 @@ public class GitHubReleaseFeedTests
     }
 
     [Fact]
-    public async Task Null_when_no_setup_asset()
+    public async Task Returns_release_without_setup_url_when_asset_missing()
     {
+        // A release with a renamed asset is still a release: the version must
+        // surface so the UI can offer the browser fallback, not read as
+        // "no release / up to date".
         var json = """
             { "tag_name": "v1.2.0", "html_url": "https://example.com/release",
               "assets": [ { "name": "other.zip", "browser_download_url": "https://example.com/other.zip" } ] }
             """;
         var feed = new GitHubReleaseFeed(Client(HttpStatusCode.OK, json));
-        Assert.Null(await feed.GetLatestAsync(CancellationToken.None));
+        var release = await feed.GetLatestAsync(CancellationToken.None);
+
+        Assert.NotNull(release);
+        Assert.Equal("v1.2.0", release!.Tag);
+        Assert.Null(release.SetupAssetUrl);
+        Assert.Equal("https://example.com/release", release.ReleasePageUrl);
     }
 
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler

@@ -80,7 +80,12 @@ public sealed class GitHubReleaseFeed : IReleaseFeed
             {
                 Assets = assets,
             };
-            return UpdateCheck.PickSetupAsset(release);
+
+            // A release with a renamed/missing setup asset is still a release:
+            // surface it (SetupAssetUrl stays null) so the version comparison
+            // runs and the UI can offer the browser fallback. Only a release
+            // WITH the asset gets its download URL filled in.
+            return UpdateCheck.PickSetupAsset(release) ?? release;
         }
         catch (JsonException)
         {

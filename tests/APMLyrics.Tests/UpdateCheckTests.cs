@@ -26,6 +26,7 @@ public class UpdateCheckTests
     {
         Assert.Equal(new Version(1, 2, 0), UpdateCheck.ParseTag("v1.2"));
         Assert.Equal(new Version(5, 0, 0), UpdateCheck.ParseTag("v5"));
+        Assert.Equal(new Version(1, 2, 3, 4), UpdateCheck.ParseTag("v1.2.3.4"));
     }
 
     [Fact]

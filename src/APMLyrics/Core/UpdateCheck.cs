@@ -42,9 +42,13 @@ public static class UpdateCheck
                 return null;
             numbers[i] = n;
         }
-        return new Version(numbers[0],
-            numbers.Length > 1 ? numbers[1] : 0,
-            numbers.Length > 2 ? numbers[2] : 0);
+        return numbers.Length switch
+        {
+            1 => new Version(numbers[0], 0, 0),
+            2 => new Version(numbers[0], numbers[1], 0),
+            3 => new Version(numbers[0], numbers[1], numbers[2]),
+            _ => new Version(numbers[0], numbers[1], numbers[2], numbers[3]),
+        };
     }
 
     /// <summary>True only when the tag parses AND is strictly greater.</summary>

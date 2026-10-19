@@ -25,13 +25,15 @@ public sealed class UpdateService
     private readonly object _gate = new();
 
     private UpdateState _state = UpdateState.Idle;
+    private Task<bool>? _inFlightCheck;
 
     public UpdateService(IReleaseFeed feed, Func<Version> currentVersion, HttpClient? downloadClient = null)
     {
         _feed = feed;
         _currentVersion = currentVersion;
-        // Null (production) reuses the feed's shared client; a test supplies
-        // its own, owned by the test.
+        // Production owns one download client for the app lifetime (never
+        // disposed: disposing would kill a later update); a test supplies its
+        // own, owned by the test.
         _downloadClient = downloadClient ?? new HttpClient();
     }
 
@@ -49,16 +51,28 @@ public sealed class UpdateService
     /// </summary>
     public Func<string, string, bool> Launcher { get; init; } = DefaultLauncher;
 
-    /// <summary>One check per call; failures and "no update" are the same silent false.</summary>
-    public async Task<bool> CheckAsync(CancellationToken ct)
+    /// <summary>
+    /// One check per call; failures and "no update" are the same silent false.
+    /// A manual check while the startup check is still in flight awaits it
+    /// rather than reporting a false "up to date".
+    /// </summary>
+    public Task<bool> CheckAsync(CancellationToken ct)
     {
+        Task<bool>? inFlight;
         lock (_gate)
         {
-            if (_state != UpdateState.Idle)
-                return _state == UpdateState.Available;
+            if (_state == UpdateState.Checking && _inFlightCheck is not null)
+                return _inFlightCheck;
+            if (_state == UpdateState.Available)
+                return Task.FromResult(true);
             _state = UpdateState.Checking;
+            inFlight = _inFlightCheck = CheckCoreAsync(ct);
+            return inFlight;
         }
+    }
 
+    private async Task<bool> CheckCoreAsync(CancellationToken ct)
+    {
         try
         {
             var release = await _feed.GetLatestAsync(ct);
@@ -66,17 +80,29 @@ public sealed class UpdateService
 
             if (release is null || !UpdateCheck.IsNewer(current, release.Tag))
             {
-                lock (_gate) _state = UpdateState.Idle;
+                lock (_gate)
+                {
+                    _state = UpdateState.Idle;
+                    _inFlightCheck = null;
+                }
                 return false;
             }
 
-            lock (_gate) _state = UpdateState.Available;
+            lock (_gate)
+            {
+                _state = UpdateState.Available;
+                _inFlightCheck = null;
+            }
             UpdateAvailable?.Invoke(release);
             return true;
         }
         catch (Exception)
         {
-            lock (_gate) _state = UpdateState.Idle;
+            lock (_gate)
+            {
+                _state = UpdateState.Idle;
+                _inFlightCheck = null;
+            }
             return false;
         }
     }

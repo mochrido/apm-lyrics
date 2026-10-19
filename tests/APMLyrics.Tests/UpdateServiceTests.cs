@@ -99,6 +99,44 @@ public class UpdateServiceTests
         Assert.False(ok);
     }
 
+    [Fact]
+    public async Task Newer_release_without_setup_asset_still_surfaces()
+    {
+        // Renamed asset: the version must still be reported available; the
+        // install attempt then fails cleanly and the caller opens the page.
+        var noAsset = new ReleaseInfo("v9.9.9", null, "https://github.com/mochrido/apm-lyrics/releases/tag/v9.9.9");
+        var service = new UpdateService(new StubFeed(noAsset), () => new Version(1, 0, 0));
+
+        var found = await service.CheckAsync(CancellationToken.None);
+
+        Assert.True(found);
+        Assert.Equal(UpdateState.Available, service.State);
+        Assert.False(await service.DownloadAndRunInstallerAsync(noAsset, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Manual_check_during_inflight_check_awaits_result()
+    {
+        // Startup check in flight; the user clicks "Check for updates…". The
+        // manual call must not return a false "up to date" while the first
+        // check is still running.
+        var gate = new TaskCompletionSource<ReleaseInfo?>();
+        var service = new UpdateService(new GateFeed(gate.Task), () => new Version(1, 0, 0));
+
+        var startup = service.CheckAsync(CancellationToken.None);
+        var manual = service.CheckAsync(CancellationToken.None);
+        Assert.False(manual.IsCompleted); // still waiting on the in-flight check
+
+        gate.SetResult(Newer());
+        Assert.True(await manual);
+        Assert.True(await startup);
+    }
+
+    private sealed class GateFeed(Task<ReleaseInfo?> result) : IReleaseFeed
+    {
+        public Task<ReleaseInfo?> GetLatestAsync(CancellationToken ct) => result;
+    }
+
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(

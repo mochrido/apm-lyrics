@@ -16,6 +16,9 @@ public sealed class TrayIcon : IDisposable
     /// <summary>Update service, attached once by the app; null before AttachUpdates.</summary>
     private UpdateService? _updates;
 
+    /// <summary>Latest known newer release; written from worker threads, read on the UI thread.</summary>
+    private volatile ReleaseInfo? _pendingRelease;
+
     public TrayIcon(OverlayWindow overlay, Func<AppSettings> get, Action<AppSettings> set)
     {
         _icon = new TaskbarIcon
@@ -192,8 +195,6 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Insert(Math.Max(0, menu.Items.Count - 1), new System.Windows.Controls.Separator());
         menu.Items.Insert(Math.Max(0, menu.Items.Count - 1), updateItem);
     }
-
-    private ReleaseInfo? _pendingRelease;
 
     /// <summary>
     /// Loads the tray icon from the embedded resource; the stream is copied
