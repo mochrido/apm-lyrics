@@ -67,6 +67,36 @@ public class GitHubReleaseFeedTests
         Assert.Equal("https://example.com/release", release.ReleasePageUrl);
     }
 
+    [Fact]
+    public async Task Sends_a_user_agent()
+    {
+        // GitHub's API answers 403 to any request without a User-Agent header,
+        // which .NET's HttpClient does not send by default. That made every
+        // real check silently fail as "up to date".
+        HttpRequestMessage? seen = null;
+        var client = new HttpClient(new CapturingHandler(
+            () => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(ReleaseJson) },
+            r => seen = r))
+        { BaseAddress = new Uri("https://api.github.com/") };
+        var feed = new GitHubReleaseFeed(client);
+        var release = await feed.GetLatestAsync(CancellationToken.None);
+
+        Assert.NotNull(release);
+        Assert.NotNull(seen);
+        Assert.False(string.IsNullOrEmpty(seen!.Headers.UserAgent.ToString()));
+    }
+
+    private sealed class CapturingHandler(
+        Func<HttpResponseMessage> respond, Action<HttpRequestMessage> capture) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken ct)
+        {
+            capture(request);
+            return Task.FromResult(respond());
+        }
+    }
+
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(

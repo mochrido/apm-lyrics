@@ -32,12 +32,20 @@ public sealed class GitHubReleaseFeed : IReleaseFeed
         _client = client ?? Shared;
     }
 
+    private static string AppVersion =>
+        typeof(GitHubReleaseFeed).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+
     public async Task<ReleaseInfo?> GetLatestAsync(CancellationToken ct)
     {
         try
         {
-            using var response = await _client.GetAsync(
-                $"https://api.github.com/repos/{RepoSlug}/releases/latest", ct);
+            // Per-request, not on the client: a caller-supplied client (tests,
+            // future callers) may not carry the header, and GitHub rejects
+            // headerless requests with 403.
+            using var request = new HttpRequestMessage(HttpMethod.Get,
+                $"https://api.github.com/repos/{RepoSlug}/releases/latest");
+            request.Headers.UserAgent.ParseAdd($"APMLyrics/{AppVersion}");
+            using var response = await _client.SendAsync(request, ct);
             if (!response.IsSuccessStatusCode)
                 return null;
 
