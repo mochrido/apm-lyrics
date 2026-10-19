@@ -15,6 +15,7 @@ public partial class OverlayWindow : Window
 {
     private AppSettings _settings = AppSettings.Default;
     private bool _suppressClamp;
+    private bool _isDragMove;
 
     public OverlayWindow()
     {
@@ -48,6 +49,7 @@ public partial class OverlayWindow : Window
         Backdrop.Background = new SolidColorBrush(backdropColor);
 
         Panel.Apply(settings);
+        _draggable = settings.Draggable;
     }
 
     /// <summary>Parses a colour without ever throwing; falls back to the default.</summary>
@@ -66,6 +68,13 @@ public partial class OverlayWindow : Window
     }
 
     public void SetClickThrough(bool enabled) => ClickThrough.Apply(this, enabled);
+
+    /// <summary>
+    /// Draggable OFF pins the overlay where it is: drags are ignored so an
+    /// accidental grab cannot move it. Resize and click-through still work.
+    /// </summary>
+    public void SetDraggable(bool enabled) => _draggable = enabled;
+    private bool _draggable = true;
 
     // The window owns the current track state so every content call (track
     // change, resolved doc, no lyrics) renders the right empty-state text.
@@ -91,13 +100,24 @@ public partial class OverlayWindow : Window
 
     private void Backdrop_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (!_draggable)
+            return;
+
         try
         {
+            // Moving the window fires LocationChanged on every mouse move; the
+            // drop clamp must not run mid-drag or the position it writes cancels
+            // the drag loop Windows is running. Clamp once, after the drag ends.
+            _isDragMove = true;
             DragMove();
         }
         catch (InvalidOperationException)
         {
             // Raised when the button is released before the drag starts. Safe to ignore.
+        }
+        finally
+        {
+            _isDragMove = false;
         }
         ApplyDropClamp();
         SettingsChanged?.Invoke(_settings with { X = Left, Y = Top });
@@ -127,7 +147,7 @@ public partial class OverlayWindow : Window
     protected override void OnLocationChanged(EventArgs e)
     {
         base.OnLocationChanged(e);
-        if (_suppressClamp)
+        if (_suppressClamp || _isDragMove)
             return;
         // Clamp on every location change so nothing (snap, restore, another
         // app) can park the overlay inside the taskbar either.

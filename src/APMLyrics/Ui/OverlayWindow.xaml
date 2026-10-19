@@ -13,7 +13,7 @@
     <Border x:Name="Backdrop"
             CornerRadius="8"
             Padding="16,10"
-            MouseLeftButtonDown="Backdrop_MouseLeftButtonDown">
+            PreviewMouseLeftButtonDown="Backdrop_MouseLeftButtonDown">
         <ui:LyricPanel x:Name="Panel"/>
     </Border>
 </Window>

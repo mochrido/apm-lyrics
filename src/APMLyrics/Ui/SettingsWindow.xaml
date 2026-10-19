@@ -6,7 +6,7 @@
         Width="520" MinWidth="480" Height="560"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="True"
-        Icon="Assets/app.ico">
+        Icon="pack://application:,,,/APMLyrics;component/Assets/app.ico">
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="150"/>
@@ -73,6 +73,9 @@
                 <TextBlock Text="Click-through (the tray menu can undo this)" FontWeight="SemiBold"/>
                 <CheckBox x:Name="Through" Margin="0,6,0,12"/>
 
+                <TextBlock Text="Draggable (drag the overlay to move it)" FontWeight="SemiBold"/>
+                <CheckBox x:Name="DraggableBox" Margin="0,6,0,12"/>
+
                 <TextBlock Text="The overlay always stays above the taskbar: dropping it over the"
                            TextWrapping="Wrap"/>
                 <TextBlock Text="taskbar lifts it back on top automatically." TextWrapping="Wrap"
@@ -81,7 +84,7 @@
 
             <!-- About -->
             <StackPanel x:Name="AboutPage" Visibility="Collapsed">
-                <Image Source="/Assets/app.ico" Width="64" Height="64" Margin="0,12,0,8"
+                <Image Source="pack://application:,,,/APMLyrics;component/Assets/app.ico" Width="64" Height="64" Margin="0,12,0,8"
                        HorizontalAlignment="Left"/>
                 <TextBlock Text="APM Lyrics" FontSize="20" FontWeight="Bold"/>
                 <TextBlock x:Name="VersionText" Foreground="Gray" Margin="0,2,0,12"/>

@@ -17,6 +17,21 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void Old_settings_json_loads_with_draggable_default_on()
+    {
+        var path = TempPath();
+        try
+        {
+            // A settings file from before the draggable toggle existed: no
+            // Draggable key at all. Dragging stays on unless turned off.
+            File.WriteAllText(path, """{ "Mode": "MultiLine", "FontSize": 28 }""");
+            var loaded = AppSettingsStore.Load(path);
+            Assert.True(loaded.Draggable);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void Round_trips_through_disk()
     {
         var path = TempPath();

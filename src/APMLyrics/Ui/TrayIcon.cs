@@ -71,6 +71,23 @@ public sealed class TrayIcon : IDisposable
         };
         menu.Items.Add(clickThroughItem);
 
+        var draggableItem = new System.Windows.Controls.MenuItem();
+        void SyncDraggableLabel()
+        {
+            draggableItem.Header = get().Draggable
+                ? "Draggable: ON"
+                : "Draggable: OFF (overlay stays where it is)";
+        }
+
+        draggableItem.Click += (_, _) =>
+        {
+            var next = get() with { Draggable = !get().Draggable };
+            set(next);
+            overlay.SetDraggable(next.Draggable);
+            SyncDraggableLabel();
+        };
+        menu.Items.Add(draggableItem);
+
         var modeItem = new System.Windows.Controls.MenuItem();
         void SyncModeLabel()
         {
@@ -101,7 +118,9 @@ public sealed class TrayIcon : IDisposable
                 set(updated);
                 overlay.ApplySettings(updated);
                 overlay.SetClickThrough(updated.ClickThrough);
+                overlay.SetDraggable(updated.Draggable);
                 SyncClickThroughLabel();
+                SyncDraggableLabel();
                 SyncModeLabel();
             };
             window.Show();
@@ -112,6 +131,7 @@ public sealed class TrayIcon : IDisposable
         _icon.ContextMenu = menu;
         SyncOverlayLabel();
         SyncClickThroughLabel();
+        SyncDraggableLabel();
         SyncModeLabel();
         _icon.ForceCreate();
     }
@@ -202,7 +222,7 @@ public sealed class TrayIcon : IDisposable
     /// </summary>
     private static System.Drawing.Icon LoadIcon()
     {
-        var resource = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"));
+        var resource = Application.GetResourceStream(new Uri("pack://application:,,,/APMLyrics;component/Assets/app.ico"));
         using var stream = resource.Stream;
         return new System.Drawing.Icon(stream);
     }

@@ -67,6 +67,7 @@ public partial class SettingsWindow : Window
         Backdrop.Value = settings.BackdropOpacity;
         Dim.IsChecked = settings.DimNeighbours;
         Through.IsChecked = settings.ClickThrough;
+        DraggableBox.IsChecked = settings.Draggable;
 
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
         VersionText.Text = $"Version {version}";
@@ -98,6 +99,8 @@ public partial class SettingsWindow : Window
         Dim.Unchecked += OnAnyChange;
         Through.Checked += OnAnyChange;
         Through.Unchecked += OnAnyChange;
+        DraggableBox.Checked += OnAnyChange;
+        DraggableBox.Unchecked += OnAnyChange;
 
         RefreshPreview();
 
@@ -234,5 +237,6 @@ public partial class SettingsWindow : Window
         NeighbourOpacity = NeighbourOpacity.Value,
         DimNeighbours = Dim.IsChecked == true,
         ClickThrough = Through.IsChecked == true,
+        Draggable = DraggableBox.IsChecked == true,
     };
 }

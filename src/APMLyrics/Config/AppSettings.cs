@@ -23,6 +23,8 @@ public sealed record AppSettings
     public double NeighbourOpacity { get; init; } = 0.45;
     public bool DimNeighbours { get; init; } = true;
     public bool ClickThrough { get; init; }
+    /// <summary>When false the overlay ignores mouse drags (position is then only changed by resize or settings).</summary>
+    public bool Draggable { get; init; } = true;
     public double X { get; init; } = 100;
     public double Y { get; init; } = 100;
     public double Width { get; init; } = 560;
