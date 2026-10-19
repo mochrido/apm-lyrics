@@ -44,13 +44,21 @@ public sealed class CatalogClient : ICatalogClient
         LoadDiskCache();
     }
 
-    /// <summary>"AP_1872239909" to "1872239909"; anything else (MX_, empty) to null.</summary>
+    /// <summary>"AP_1872239909"/"MO_1481804592" to the numeric id; anything else (MX_, empty) to null.
+    /// MO_ (music video) ids are the same iTunes track ids and resolve through the
+    /// same lookup, so they must not be skipped.</summary>
     public static string? SongIdFromLyricsId(string lyricsId)
     {
-        if (string.IsNullOrEmpty(lyricsId) || !lyricsId.StartsWith("AP_", StringComparison.Ordinal))
+        if (string.IsNullOrEmpty(lyricsId))
             return null;
 
-        var id = lyricsId[3..];
+        int? prefixLength = lyricsId.StartsWith("AP_", StringComparison.Ordinal) ? 3
+            : lyricsId.StartsWith("MO_", StringComparison.Ordinal) ? 3
+            : null;
+        if (prefixLength is null)
+            return null;
+
+        var id = lyricsId[prefixLength.Value..];
         return id.Length > 0 && id.All(char.IsAsciiDigit) ? id : null;
     }
 

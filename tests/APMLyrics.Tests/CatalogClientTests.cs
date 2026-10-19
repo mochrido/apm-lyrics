@@ -43,6 +43,10 @@ public class CatalogClientTests
 
     [Theory]
     [InlineData("AP_1872239909", "1872239909")]
+    // Apple also caches lyrics under MO_ ids (music videos); the id is the same
+    // iTunes track id and resolves through the same lookup. Observed on a real
+    // session: "Mata Air (feat. Natasha Udu & Kamga)" was cached only as MO_1481804592.
+    [InlineData("MO_1481804592", "1481804592")]
     [InlineData("MX_46242766-48516696", null)]
     [InlineData("", null)]
     [InlineData("AP_", null)]
