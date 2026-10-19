@@ -3,7 +3,7 @@
     <!-- A runnable app: the WPF SDK picks App.xaml up as the application
          definition and generates the entry point. -->
     <OutputType>WinExe</OutputType>
-    <Version>0.2.2</Version>
+    <Version>0.2.3</Version>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
