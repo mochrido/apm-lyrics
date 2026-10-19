@@ -20,3 +20,20 @@ Run once per release on a real Apple Music session. Record the date and result.
 - [ ] Close and relaunch: position, size, mode, and colours restore.
 - [ ] If a second monitor at a different scale is available: the text is crisp on both.
 - [ ] Quit from the tray: the process exits with no orphaned window.
+
+## UI/UX overhaul (2026-10-19) — manual QA checklist
+
+- [ ] Overlay: text centered horizontally AND vertically in both modes.
+- [ ] Single-line mode: text sits in the vertical middle, not hugging the top.
+- [ ] Multi-line: consistent spacing between prev/current/next; current bright and larger.
+- [ ] Resize small: neighbours disappear (radius sheds) before text gets tiny; text never below ~14px in auto-fit.
+- [ ] Resize large: text grows with the window (never "stays small").
+- [ ] Settings → Lock font size ON: text stays at the chosen size through resize (clips/wraps instead).
+- [ ] Lock toggle ON seeds the slider from the current size; label reads "Font size (locked)".
+- [ ] Drag overlay onto the taskbar: it lifts to sit above the taskbar, never buried.
+- [ ] Secondary monitor below the primary: dragging there is not yanked back.
+- [ ] Tray icon, Settings window, taskbar entry, and installer show the ♪A logo; legible at 16px.
+- [ ] Settings: sidebar pages (Appearance / Colors / Behaviour / About) all reachable; live preview updates on every edit.
+- [ ] Old settings.json (pre-lock fields): loads fine, lock off, locked size 28.
+- [ ] Crossfade still plays on line change only, not on restyle.
+- [ ] Click-through on: overlay ignores mouse; tray menu still recovers it.
