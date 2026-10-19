@@ -85,6 +85,9 @@
                        HorizontalAlignment="Left"/>
                 <TextBlock Text="APM Lyrics" FontSize="20" FontWeight="Bold"/>
                 <TextBlock x:Name="VersionText" Foreground="Gray" Margin="0,2,0,12"/>
+                <Button x:Name="CheckUpdateButton" Content="Check for updates" Margin="0,0,0,6"
+                        HorizontalAlignment="Left" Padding="12,4"/>
+                <TextBlock x:Name="UpdateStatus" Foreground="Gray" Margin="0,0,0,12" TextWrapping="Wrap"/>
                 <TextBlock Text="Synced lyrics for Apple Music, floating on top of everything else."
                            TextWrapping="Wrap"/>
             </StackPanel>

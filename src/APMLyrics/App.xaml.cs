@@ -22,6 +22,7 @@ public partial class App : Application
     private CancellationTokenSource? _resolveCts;
     private DispatcherTimer? _saveTimer;
     private DateTimeOffset? _trackStartedAt;
+    private UpdateService? _updates;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -80,6 +81,12 @@ public partial class App : Application
 
         _tray = new TrayIcon(_overlay, () => _settings, OnOverlayChanged);
 
+        // Update check: once per start, silent on failure. A new release is
+        // only ever announced; installing is the user's click.
+        _updates = new UpdateService(new GitHubReleaseFeed(), CurrentVersion);
+        _tray.AttachUpdates(_updates, () => Dispatcher.InvokeAsync(() => Shutdown()));
+        _ = _updates.CheckAsync(CancellationToken.None);
+
         _cache = new AppleLyricsCache();
         _catalog = new CatalogClient();
         _resolver = new LyricsResolver(_cache, _catalog);
@@ -97,6 +104,13 @@ public partial class App : Application
         _playback.TrackChanged += OnTrackChanged;
         _playback.PositionChanged += OnPositionChanged;
         _playback.Start();
+    }
+
+    /// <summary>The running app's version, for the update comparison.</summary>
+    private static Version CurrentVersion()
+    {
+        var v = typeof(App).Assembly.GetName().Version;
+        return v ?? new Version(0, 0, 0);
     }
 
     /// <summary>

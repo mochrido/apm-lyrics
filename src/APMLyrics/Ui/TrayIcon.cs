@@ -1,5 +1,6 @@
 using System.Windows;
 using APMLyrics.Config;
+using APMLyrics.Core;
 using H.NotifyIcon;
 
 namespace APMLyrics.Ui;
@@ -11,6 +12,9 @@ namespace APMLyrics.Ui;
 public sealed class TrayIcon : IDisposable
 {
     private readonly TaskbarIcon _icon;
+
+    /// <summary>Update service, attached once by the app; null before AttachUpdates.</summary>
+    private UpdateService? _updates;
 
     public TrayIcon(OverlayWindow overlay, Func<AppSettings> get, Action<AppSettings> set)
     {
@@ -88,7 +92,7 @@ public sealed class TrayIcon : IDisposable
 
         Add("Settings", () =>
         {
-            var window = new SettingsWindow(get());
+            var window = new SettingsWindow(get(), _updates);
             window.Applied += updated =>
             {
                 set(updated);
@@ -110,6 +114,86 @@ public sealed class TrayIcon : IDisposable
     }
 
     public void Dispose() => _icon.Dispose();
+
+    /// <summary>
+    /// Wires the update flow into the tray: a balloon when a new release is
+    /// found on startup, a "Check for updates…" menu entry, and an "Update
+    /// now" entry that appears once a newer release is known.
+    /// </summary>
+    public void AttachUpdates(UpdateService updates, Action shutdown)
+    {
+        _updates = updates;
+
+        var menu = (System.Windows.Controls.ContextMenu)_icon.ContextMenu;
+        var updateItem = new System.Windows.Controls.MenuItem { Header = "Check for updates…" };
+
+        async void RunUpdate(ReleaseInfo release)
+        {
+            updateItem.Header = "Downloading update…";
+            updateItem.IsEnabled = false;
+            var started = await updates.DownloadAndRunInstallerAsync(release, CancellationToken.None);
+            if (started)
+            {
+                shutdown();
+                return;
+            }
+
+            // Download failed: fall back to the release page in the browser.
+            updateItem.Header = "Update available — open download page";
+            updateItem.IsEnabled = true;
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    release.ReleasePageUrl) { UseShellExecute = true });
+            }
+            catch (Exception)
+            {
+                // Best effort; the menu header still tells the user what to do.
+            }
+        }
+
+        updateItem.Click += async (_, _) =>
+        {
+            if (updates.State == UpdateState.Available && _pendingRelease is { } release)
+            {
+                RunUpdate(release);
+                return;
+            }
+
+            updateItem.Header = "Checking…";
+            var found = await updates.CheckAsync(CancellationToken.None);
+            if (found && _pendingRelease is { } newer)
+            {
+                updateItem.Header = $"Version {newer.Tag.TrimStart('v')} available — Update now";
+                updateItem.IsEnabled = true;
+                RunUpdate(newer);
+            }
+            else
+            {
+                updateItem.Header = "Up to date";
+            }
+        };
+
+        updates.UpdateAvailable += release =>
+        {
+            _pendingRelease = release;
+            // The event may arrive from a worker thread; the tray is a
+            // DispatcherObject, so hop to the UI thread.
+            Application.Current?.Dispatcher.InvokeAsync(() =>
+            {
+                updateItem.Header = $"Version {release.Tag.TrimStart('v')} available — Update now";
+                _icon.ShowNotification(
+                    title: "APM Lyrics update",
+                    message: $"Version {release.Tag.TrimStart('v')} is out. Use the tray menu to update when you're ready.");
+            });
+        };
+
+        // Insert after the settings entry, before Quit.
+        menu.Items.Insert(Math.Max(0, menu.Items.Count - 1), new System.Windows.Controls.Separator());
+        menu.Items.Insert(Math.Max(0, menu.Items.Count - 1), updateItem);
+    }
+
+    private ReleaseInfo? _pendingRelease;
 
     /// <summary>
     /// Loads the tray icon from the embedded resource; the stream is copied

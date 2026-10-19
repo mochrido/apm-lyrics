@@ -35,6 +35,19 @@ No separate .NET download is needed; the installer is self-contained.
 Code-signing certificates cost a few hundred dollars a year, which did not seem worth it for a
 lyrics overlay. The full source is here if you would rather read it than trust it.
 
+### Updating
+
+From version 0.2.0 onwards the app checks for updates on startup and shows a tray notification
+when a new release is out — update with one click from the tray menu's **Update now**. If the
+download ever fails, it falls back to opening the release page instead.
+
+On an older install, update manually once: download `APMLyricsSetup.exe` from the
+[latest release](../../releases/latest) and run it. It upgrades in place; your position, size,
+and settings are kept.
+
+Releases follow one rule: the release tag (`v0.2.0`) always matches the version shown in
+Settings → About.
+
 ## Using it
 
 Everything is controlled from the **tray icon** near your clock (it may be hiding behind the `^`

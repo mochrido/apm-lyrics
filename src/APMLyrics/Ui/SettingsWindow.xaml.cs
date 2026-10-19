@@ -21,6 +21,7 @@ public partial class SettingsWindow : Window
     });
 
     private readonly AppSettings _initial;
+    private readonly UpdateService? _updates;
 
     // Last colour value each box held that the overlay can actually render.
     private string _textColor;
@@ -33,10 +34,11 @@ public partial class SettingsWindow : Window
 
     private Brush? _defaultBoxBorder;
 
-    public SettingsWindow(AppSettings settings)
+    public SettingsWindow(AppSettings settings, UpdateService? updates = null)
     {
         InitializeComponent();
         _initial = settings;
+        _updates = updates;
 
         ModeMulti.IsChecked = settings.Mode == DisplayMode.MultiLine;
         ModeSingle.IsChecked = settings.Mode == DisplayMode.SingleLine;
@@ -98,6 +100,20 @@ public partial class SettingsWindow : Window
         Through.Unchecked += OnAnyChange;
 
         RefreshPreview();
+
+        CheckUpdateButton.Click += async (_, _) =>
+        {
+            if (_updates is null)
+                return;
+            CheckUpdateButton.IsEnabled = false;
+            UpdateStatus.Text = "Checking…";
+            var found = await _updates.CheckAsync(CancellationToken.None);
+            if (found)
+                UpdateStatus.Text = "A new version is available. Use “Update now” in the tray menu.";
+            else
+                UpdateStatus.Text = "You're up to date.";
+            CheckUpdateButton.IsEnabled = true;
+        };
     }
 
     public event Action<AppSettings>? Applied;
