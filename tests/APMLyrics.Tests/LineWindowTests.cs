@@ -125,4 +125,55 @@ public class LineWindowTests
     {
         Assert.Equal(-1, LineWindow.CurrentIndex(Array.Empty<LyricLine>(), TimeSpan.FromSeconds(5)));
     }
+
+    [Fact]
+    public void Locked_size_is_returned_verbatim()
+    {
+        // Locking means the user's number wins, whatever the window looks like.
+        Assert.Equal(40.0, LineWindow.FitFontSize(28, 100, 50, 1, lockSize: true, lockedSize: 40));
+    }
+
+    [Fact]
+    public void Locked_size_clamps_to_10_96()
+    {
+        Assert.Equal(10.0, LineWindow.FitFontSize(28, 100, 50, 1, lockSize: true, lockedSize: 5));
+        Assert.Equal(96.0, LineWindow.FitFontSize(28, 100, 50, 1, lockSize: true, lockedSize: 200));
+    }
+
+    [Fact]
+    public void Autofit_never_goes_below_floor()
+    {
+        // A window dragged to a sliver still yields the readability floor, not 6px.
+        var tiny = LineWindow.FitFontSize(28, 60, 24, 3, lockSize: false, lockedSize: 0);
+        Assert.Equal(LineWindow.ReadabilityFloor, tiny);
+    }
+
+    [Fact]
+    public void Autofit_grows_with_window()
+    {
+        // Regression for "resized larger but text stayed small": doubling both
+        // axes must roughly double the fitted size.
+        var half = LineWindow.FitFontSize(28, 560, 160, 3, lockSize: false, lockedSize: 0);
+        var full = LineWindow.FitFontSize(28, 1120, 320, 3, lockSize: false, lockedSize: 0);
+        // Not exactly 2: the fixed border padding does not scale, and the width
+        // axis (which grows slightly slower than height here) is the limiter.
+        Assert.InRange(full / half, 1.99, 2.1);
+    }
+
+    [Fact]
+    public void EffectiveRows_sheds_radius_before_shrinking_below_floor()
+    {
+        // A height that fits only one row at the floor: neighbours must go first.
+        var rows = LineWindow.EffectiveRows(radius: 2, lineCount: 9, currentIndex: 4,
+            fittedSize: 14, width: 800, height: 40);
+        Assert.Equal(1, rows);
+    }
+
+    [Fact]
+    public void EffectiveRows_keeps_radius_when_space_available()
+    {
+        var rows = LineWindow.EffectiveRows(radius: 2, lineCount: 9, currentIndex: 4,
+            fittedSize: 14, width: 800, height: 400);
+        Assert.Equal(5, rows);
+    }
 }

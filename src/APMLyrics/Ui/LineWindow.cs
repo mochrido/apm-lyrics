@@ -42,7 +42,22 @@ public static class LineWindow
     /// Extra neighbour rows shrink the result so five rows fit where three did.
     /// </summary>
     public static double FitFontSize(double baseFontSize, double width, double height, int rows)
+        => FitFontSize(baseFontSize, width, height, rows, lockSize: false, lockedSize: 0);
+
+    /// <summary>
+    /// The readability floor for auto-fit: the fitted size never goes below it,
+    /// because a lyric that technically renders but cannot be read is a bug.
+    /// When the user locks the font size there is no floor — a deliberate
+    /// choice is respected down to the 10 DIP slider minimum.
+    /// </summary>
+    public const double ReadabilityFloor = 14.0;
+
+    public static double FitFontSize(
+        double baseFontSize, double width, double height, int rows, bool lockSize, double lockedSize)
     {
+        if (lockSize)
+            return Math.Clamp(lockedSize, 10, 96);
+
         var usableWidth = Math.Max(0, width - PaddingX);
         var usableHeight = Math.Max(0, height - PaddingY);
 
@@ -54,7 +69,34 @@ public static class LineWindow
         // must share the same height, so shrink proportionally.
         var rowScale = rows > 3 ? 3.0 / rows : 1.0;
 
-        return Math.Clamp(baseFontSize * scale * rowScale, MinFontSize, MaxFontSize);
+        return Math.Clamp(baseFontSize * scale * rowScale, ReadabilityFloor, MaxFontSize);
+    }
+
+    /// <summary>
+    /// How many rows actually fit: sheds the neighbour radius one step at a
+    /// time (down to zero = current line only) while the rows at the fitted
+    /// size would exceed the usable height. Neighbours go before the current
+    /// line ever shrinks below the readability floor.
+    /// </summary>
+    public static int EffectiveRows(
+        int radius, int lineCount, int currentIndex, double fittedSize, double width, double height)
+    {
+        if (lineCount <= 0)
+            return 0;
+
+        var usableHeight = Math.Max(0, height - PaddingY);
+        for (var r = Math.Clamp(radius, 0, 10); r >= 0; r--)
+        {
+            var visible = Math.Min(lineCount, r * 2 + 1);
+            var current = Math.Clamp(currentIndex, 0, lineCount - 1);
+            var before = Math.Min(r, current);
+            var after = Math.Min(r, lineCount - 1 - current);
+            // Current row renders at fittedSize; neighbour rows at 70% of it.
+            var needed = (before + after) * fittedSize * 0.7 * 1.3 + fittedSize * 1.3;
+            if (needed <= usableHeight)
+                return before + after + 1;
+        }
+        return 1;
     }
 
     /// <summary>Index of the last line that has begun, or -1 before the first line.</summary>
