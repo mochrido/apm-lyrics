@@ -85,19 +85,48 @@ public static class LineWindow
             return 0;
 
         var usableHeight = Math.Max(0, height - PaddingY);
+        var current = Math.Clamp(currentIndex, 0, lineCount - 1);
         for (var r = Math.Clamp(radius, 0, 10); r >= 0; r--)
         {
-            var visible = Math.Min(lineCount, r * 2 + 1);
-            var current = Math.Clamp(currentIndex, 0, lineCount - 1);
             var before = Math.Min(r, current);
             var after = Math.Min(r, lineCount - 1 - current);
-            // Current row renders at fittedSize; neighbour rows at 70% of it.
-            var needed = (before + after) * fittedSize * 0.7 * 1.3 + fittedSize * 1.3;
-            if (needed <= usableHeight)
+            if (NeededHeight(fittedSize, before + after) <= usableHeight)
                 return before + after + 1;
         }
         return 1;
     }
+
+    /// <summary>
+    /// The single sizing decision the panel needs: the font size AND the row
+    /// count together. For each radius from the configured one down to zero, it
+    /// fits the font for THAT row count and checks whether the rows plus the
+    /// spacing margins fit the height; the first radius that fits wins. This is
+    /// what lets the current line regrow after the neighbours are shed, instead
+    /// of staying at the many-row size.
+    /// </summary>
+    public static (double Size, int Rows) FitLayout(
+        double baseFontSize, double width, double height, int radius, bool lockSize, double lockedSize)
+    {
+        if (lockSize)
+            return (Math.Clamp(lockedSize, 10, 96), radius * 2 + 1);
+
+        var usableHeight = Math.Max(0, height - PaddingY);
+        for (var r = Math.Clamp(radius, 0, 10); r >= 0; r--)
+        {
+            var size = FitFontSize(baseFontSize, width, height, r * 2 + 1, lockSize: false, lockedSize: 0);
+            if (r == 0 || NeededHeight(size, r * 2) <= usableHeight)
+                return (size, r * 2 + 1);
+        }
+        return (ReadabilityFloor, 1);
+    }
+
+    /// <summary>
+    /// Stack height for the current line plus `neighbours` neighbour rows:
+    /// line height 1.3× the font size, neighbours at 70% of it, plus the 0.25×
+    /// spacing margins above and below every line.
+    /// </summary>
+    private static double NeededHeight(double size, int neighbours)
+        => neighbours * size * 0.7 * 1.55 + size * 1.55;
 
     /// <summary>Index of the last line that has begun, or -1 before the first line.</summary>
     public static int CurrentIndex(IReadOnlyList<LyricLine> lines, TimeSpan position)

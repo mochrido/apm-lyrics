@@ -189,4 +189,32 @@ public class LineWindowTests
         Assert.Equal(1, tight);
         Assert.Equal(3, roomy);
     }
+
+    [Fact]
+    public void FitLayout_sheds_neighbours_and_regrows_the_current_line()
+    {
+        // Five rows at a big base size cannot fit 800x200, so the radius sheds
+        // to zero — and the single remaining line is then fitted for ONE row,
+        // not left at the five-row size. This is the regression for "sheds to a
+        // sliver of text with empty space around it".
+        var (size, rows) = LineWindow.FitLayout(60, 800, 200, radius: 2, lockSize: false, lockedSize: 0);
+        Assert.Equal(1, rows);
+        Assert.True(size > 50, $"expected the current line to regrow past 50, got {size}");
+    }
+
+    [Fact]
+    public void FitLayout_keeps_the_radius_when_everything_fits()
+    {
+        var (size, rows) = LineWindow.FitLayout(28, 560, 160, radius: 1, lockSize: false, lockedSize: 0);
+        Assert.Equal(3, rows);
+        Assert.Equal(28.0, size);
+    }
+
+    [Fact]
+    public void FitLayout_locked_returns_locked_size_and_full_radius()
+    {
+        var (size, rows) = LineWindow.FitLayout(28, 100, 50, radius: 2, lockSize: true, lockedSize: 40);
+        Assert.Equal(40.0, size);
+        Assert.Equal(5, rows); // locked means no shedding: the window clips instead
+    }
 }

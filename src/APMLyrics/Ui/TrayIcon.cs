@@ -17,9 +17,7 @@ public sealed class TrayIcon : IDisposable
         _icon = new TaskbarIcon
         {
             ToolTipText = "APM Lyrics",
-            Icon = new System.Drawing.Icon(
-                Application.GetResourceStream(
-                    new Uri("pack://application:,,,/Assets/app.ico")).Stream),
+            Icon = LoadIcon(),
         };
 
         var menu = new System.Windows.Controls.ContextMenu();
@@ -112,4 +110,15 @@ public sealed class TrayIcon : IDisposable
     }
 
     public void Dispose() => _icon.Dispose();
+
+    /// <summary>
+    /// Loads the tray icon from the embedded resource; the stream is copied
+    /// into the Icon and disposed here, not leaked for the process lifetime.
+    /// </summary>
+    private static System.Drawing.Icon LoadIcon()
+    {
+        var resource = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"));
+        using var stream = resource.Stream;
+        return new System.Drawing.Icon(stream);
+    }
 }

@@ -27,6 +27,10 @@ public partial class SettingsWindow : Window
     private string _currentLineColor;
     private string _backdropColor;
 
+    // The locked size most recently chosen while the lock was on, so toggling
+    // the lock off and on again does not discard the user's choice.
+    private double _lastLockedSize;
+
     private Brush? _defaultBoxBorder;
 
     public SettingsWindow(AppSettings settings)
@@ -50,7 +54,8 @@ public partial class SettingsWindow : Window
         FontFamilyPicker.SelectedItem = families
             .First(f => string.Equals(f, settings.FontFamily, StringComparison.OrdinalIgnoreCase));
 
-        FontSizeSlider.Value = settings.FontSize;
+        FontSizeSlider.Value = settings.LockFontSize ? settings.LockedFontSize : settings.FontSize;
+        _lastLockedSize = settings.LockedFontSize;
         LockFont.IsChecked = settings.LockFontSize;
         SyncFontSizeLabel();
         TextColorBox.Text = _textColor = settings.TextColor;
@@ -118,6 +123,11 @@ public partial class SettingsWindow : Window
 
     private void OnLockToggled(object sender, RoutedEventArgs e)
     {
+        if (LockFont.IsChecked == true)
+        {
+            // First lock seeds the manual size from the current slider value.
+            _lastLockedSize = FontSizeSlider.Value;
+        }
         SyncFontSizeLabel();
         OnAnyChange(sender, e);
     }
@@ -195,9 +205,12 @@ public partial class SettingsWindow : Window
         FontFamily = FontFamilyPicker.SelectedItem as string ?? _initial.FontFamily,
         FontSize = FontSizeSlider.Value,
         LockFontSize = LockFont.IsChecked == true,
-        // While locked, the slider edits the locked size; while auto-fitting it
-        // stays the base size, and turning the lock on next time seeds from it.
-        LockedFontSize = LockFont.IsChecked == true ? FontSizeSlider.Value : _initial.LockedFontSize,
+        // While locked, the slider edits the locked size and the base size
+        // freezes (unlocking must not silently change auto-fit); while unlocked
+        // the slider edits the base size, which also seeds the next lock.
+        LockedFontSize = LockFont.IsChecked == true
+            ? FontSizeSlider.Value
+            : _lastLockedSize,
         TextColor = _textColor,
         CurrentLineColor = _currentLineColor,
         BackdropColor = _backdropColor,

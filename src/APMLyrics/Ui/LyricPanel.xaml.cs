@@ -56,7 +56,10 @@ public partial class LyricPanel : UserControl
     public void Tick(TimeSpan position)
     {
         _position = position;
-        if (_doc is not null && LineWindow.CurrentIndex(_doc.Lines, _position) == _lastIndex)
+        // No document means an empty state whose text does not depend on the
+        // position; skip the rebuild so an idle overlay does not churn layout
+        // four times a second.
+        if (_doc is null || LineWindow.CurrentIndex(_doc.Lines, _position) == _lastIndex)
             return;
         Render(animate: true);
     }
@@ -82,10 +85,11 @@ public partial class LyricPanel : UserControl
             else
                 text = _trackTitle + "\nNo lyrics for this song";
 
-            var empty = MakeLine(text, isCurrent: true);
-            Lines.Children.Add(empty);
             _fittedSize = FitSize(rows: 1);
+            var emptySpacing = Math.Max(2, _fittedSize * 0.25);
+            var empty = MakeLine(text, isCurrent: true, emptySpacing);
             empty.FontSize = _fittedSize;
+            Lines.Children.Add(empty);
             _lastIndex = -1;
             return;
         }
@@ -94,28 +98,25 @@ public partial class LyricPanel : UserControl
         _lastIndex = index;
 
         var multi = _settings.Mode == DisplayMode.MultiLine;
-        var fitted = FitSize(rows: multi ? _settings.NeighbourRadius * 2 + 1 : 1);
-        _fittedSize = fitted;
 
-        // Shed neighbours first when the fitted size cannot fit the rows.
+        // The sizing decision is one call: it fits the font per candidate
+        // radius and sheds neighbours when the rows do not fit, letting the
+        // current line regrow in the process.
         var radius = 0;
-        if (multi && index >= 0)
+        if (multi)
         {
-            var effective = LineWindow.EffectiveRows(
-                _settings.NeighbourRadius, _doc.Lines.Count, index, fitted, ActualWidth, ActualHeight);
-            radius = (effective - 1) / 2;
+            var (_, rows) = FitLayout(_settings.NeighbourRadius);
+            radius = Math.Max(0, (rows - 1) / 2);
         }
-
-        var spacing = Math.Max(2, fitted * 0.25);
+        _fittedSize = FitSize(rows: radius * 2 + 1);
+        var spacing = Math.Max(2, _fittedSize * 0.25);
 
         if (index < 0)
         {
-            // Before the first line: show the first line dimmed as "next".
-            var upcoming = _doc.Lines[0].Text;
-            if (multi && radius > 0 && _doc.Lines.Count > 1)
-                Lines.Children.Add(MakeLine(upcoming + "\n" + _doc.Lines[Math.Min(1 + (radius - 1), _doc.Lines.Count - 1)].Text, isCurrent: false, spacing));
-            else
-                Lines.Children.Add(MakeLine(upcoming, isCurrent: false, spacing));
+            // Before the first line: show the first upcoming lines dimmed, in
+            // order, up to the effective radius.
+            var upcoming = _doc.Lines.Take(Math.Max(1, radius + 1 > _doc.Lines.Count ? _doc.Lines.Count : radius + 1));
+            Lines.Children.Add(MakeLine(string.Join("\n", upcoming.Select(l => l.Text)), isCurrent: false, spacing));
             return;
         }
 
@@ -154,6 +155,20 @@ public partial class LyricPanel : UserControl
         }
     }
 
+    private (double Size, int Rows) FitLayout(int radius)
+    {
+        var width = PanelWidth;
+        var height = PanelHeight;
+        return LineWindow.FitLayout(
+            _settings.FontSize, width, height, radius, _settings.LockFontSize, _settings.LockedFontSize);
+    }
+
+    private double PanelWidth =>
+        double.IsNaN(ActualWidth) || ActualWidth <= 0 ? LineWindow.DesignWidth : ActualWidth;
+
+    private double PanelHeight =>
+        double.IsNaN(ActualHeight) || ActualHeight <= 0 ? LineWindow.DesignHeight : ActualHeight;
+
     private TextBlock MakeLine(string text, bool isCurrent, double spacing = 0)
     {
         var block = new TextBlock
@@ -186,10 +201,8 @@ public partial class LyricPanel : UserControl
 
     private double FitSize(int rows)
     {
-        var width = double.IsNaN(ActualWidth) || ActualWidth <= 0 ? LineWindow.DesignWidth : ActualWidth;
-        var height = double.IsNaN(ActualHeight) || ActualHeight <= 0 ? LineWindow.DesignHeight : ActualHeight;
         return LineWindow.FitFontSize(
-            _settings.FontSize, width, height, rows,
+            _settings.FontSize, PanelWidth, PanelHeight, rows,
             _settings.LockFontSize, _settings.LockedFontSize);
     }
 
