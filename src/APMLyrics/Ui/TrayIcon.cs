@@ -17,7 +17,9 @@ public sealed class TrayIcon : IDisposable
         _icon = new TaskbarIcon
         {
             ToolTipText = "APM Lyrics",
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = new System.Drawing.Icon(
+                Application.GetResourceStream(
+                    new Uri("pack://application:,,,/Assets/app.ico")).Stream),
         };
 
         var menu = new System.Windows.Controls.ContextMenu();
