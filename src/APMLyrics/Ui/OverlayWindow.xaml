@@ -1,6 +1,7 @@
 <Window x:Class="APMLyrics.Ui.OverlayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:APMLyrics.Ui"
         Title="APM Lyrics"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -13,18 +14,6 @@
             CornerRadius="8"
             Padding="16,10"
             MouseLeftButtonDown="Backdrop_MouseLeftButtonDown">
-        <Grid>
-            <Grid x:Name="MultiLinePanel">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <TextBlock x:Name="PrevLine" Grid.Row="0" TextAlignment="Center" TextWrapping="Wrap"/>
-                <TextBlock x:Name="CurrLine" Grid.Row="1" TextAlignment="Center" TextWrapping="Wrap"/>
-                <TextBlock x:Name="NextLine" Grid.Row="2" TextAlignment="Center" TextWrapping="Wrap"/>
-            </Grid>
-            <TextBlock x:Name="SingleLinePanel" TextAlignment="Center" TextWrapping="Wrap" Visibility="Collapsed"/>
-        </Grid>
+        <ui:LyricPanel x:Name="Panel"/>
     </Border>
 </Window>
