@@ -2,6 +2,11 @@
 
 <img src="docs/images/logo-256.png" alt="APM Lyrics logo" width="96" align="left" style="border-radius:20px"/>
 
+[![build](https://github.com/mochrido/apm-lyrics/actions/workflows/build.yml/badge.svg)](https://github.com/mochrido/apm-lyrics/actions/workflows/build.yml)
+[![release](https://github.com/mochrido/apm-lyrics/actions/workflows/release.yml/badge.svg)](https://github.com/mochrido/apm-lyrics/actions/workflows/release.yml)
+[![latest release](https://img.shields.io/github/v/release/mochrido/apm-lyrics)](https://github.com/mochrido/apm-lyrics/releases/latest)
+[![license](https://img.shields.io/github/license/mochrido/apm-lyrics)](LICENSE)
+
 **Synced lyrics for Apple Music, floating on top of everything else on your Windows desktop.**
 
 Apple Music shows its lyrics in a panel inside its own window. APM Lyrics takes the same lyrics
@@ -135,7 +140,7 @@ git clone https://github.com/mochrido/apm-lyrics.git
 cd apm-lyrics
 
 dotnet build                          # compile
-dotnet test                           # run the 69 unit tests
+dotnet test                           # run the unit tests
 dotnet run --project src/APMLyrics    # run it without installing
 ```
 
@@ -151,6 +156,9 @@ iscc install/APMLyrics.iss     # requires Inno Setup 6
 
 The result is `install/Output/APMLyricsSetup.exe`. It is 64-bit only, because there is no 32-bit
 publish target.
+
+You rarely need to build it by hand: pushing a `v*` tag builds the installer on CI and publishes
+it as a GitHub release (see [`.github/workflows/release.yml`](.github/workflows/release.yml)).
 
 ## Requirements
 

@@ -26,3 +26,6 @@ tests/**/fixtures/live/**
 ## Local settings and scratch
 *.local.json
 scratch/
+
+## Superpowers scratch (brainstorm mockups, SDD ledgers)
+.superpowers/

@@ -1,7 +1,11 @@
+#ifndef AppVersion
+#define AppVersion "0.2.0"
+#endif
+
 [Setup]
 AppName=APM Lyrics
 AppId={{2364AC50-F04A-49EF-A549-37AB82B4E4CC}
-AppVersion=0.1.0
+AppVersion={#AppVersion}
 AppPublisher=APM Lyrics contributors
 DefaultDirName={autopf}\APM Lyrics
 DefaultGroupName=APM Lyrics

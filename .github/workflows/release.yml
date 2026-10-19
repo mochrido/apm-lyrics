@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - name: Test
+        run: dotnet test -c Release --logger "console;verbosity=normal"
+      - name: Publish
+        run: >
+          dotnet publish src/APMLyrics -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=false
+          -o src/APMLyrics/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress
+      - name: Build installer
+        run: >
+          $v = "${{ github.ref_name }}".TrimStart('v');
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" install/APMLyrics.iss "/DAppVersion=$v"
+        shell: pwsh
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: install/Output/APMLyricsSetup.exe
+          generate_release_notes: true
