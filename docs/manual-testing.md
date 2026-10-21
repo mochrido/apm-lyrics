@@ -21,6 +21,21 @@ Run once per release on a real Apple Music session. Record the date and result.
 - [ ] If a second monitor at a different scale is available: the text is crisp on both.
 - [ ] Quit from the tray: the process exits with no orphaned window.
 
+## Lyrics reliability (2026-10-21) — manual QA checklist
+
+- [ ] Play a song Apple Music shows with synced lyrics: the overlay advances with the audio.
+- [ ] Seek backwards mid-song: within about half a second the highlighted line moves back to the correct line.
+- [ ] Seek forwards mid-song: the highlighted line jumps forward and keeps tracking.
+- [ ] Pause, seek while paused, then resume: the highlight is correct immediately after resume and does not drift by the paused duration.
+- [ ] Skip rapidly across several tracks: lyrics never show for the wrong song and never sit on the previous song's lines.
+- [ ] Play "Pasti Ada Jalan" (Perunggu): Apple's own lyrics are static; the overlay says `Only unsynced lyrics available` rather than scrolling text.
+- [ ] Play a song with a validated online fallback: lyrics advance in time with the vocals.
+- [ ] Play a song with no lyrics anywhere: overlay says `No matching synced lyrics found`.
+- [ ] Disconnect the network and replay a previously resolved fallback song: lyrics still appear from cache.
+- [ ] With Apple Music closed, the overlay shows `Nothing playing`.
+- [ ] Restart Apple Music and play the same song again: lyrics reappear (same-song reconnect).
+- [ ] Record a timeline trace with `scripts/Observe-AppleMusicTimeline.ps1` during the seek tests and note observed correction latency.
+
 ## UI/UX overhaul (2026-10-19) — manual QA checklist
 
 - [ ] Overlay: text centered horizontally AND vertically in both modes.

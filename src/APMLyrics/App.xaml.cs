@@ -127,7 +127,7 @@ public partial class App : Application
         _saveTimer?.Start();
     }
 
-    private void OnTrackChanged(Track? track)
+    private void OnTrackChanged(long generation, Track? track)
     {
         // Raised from the SMTC poll loop, which runs on a thread pool thread.
         // Everything below touches WPF objects, so it must be marshalled to the
@@ -135,10 +135,9 @@ public partial class App : Application
         // every access to a DispatcherObject).
         Dispatcher.InvokeAsync(() =>
         {
-            // The clock must not carry the old song's position into the new one:
-            // Sync cannot move backwards, so without a reset the new track's
-            // lyrics would be looked up at the old position.
-            _clock?.Reset();
+            // The clock adopts the new generation, so an observation belonging to
+            // the previous song can never be applied to this one.
+            _clock?.Reset(generation);
             _overlay?.Apply(track); // clears lines immediately, no stale lyrics
             _trackStartedAt = track is null ? null : DateTimeOffset.UtcNow;
             if (track is not null)
@@ -146,14 +145,14 @@ public partial class App : Application
         });
     }
 
-    private void OnPositionChanged(TimeSpan position, bool isPlaying, double rate)
+    private void OnPositionChanged(PlaybackSnapshot snapshot)
     {
         // Same thread-affinity reason as OnTrackChanged: this arrives on the poll
         // thread and writes to the overlay. The hop is cheap; it is one queued
         // operation at 4Hz, not a render loop.
         Dispatcher.InvokeAsync(() =>
         {
-            _clock?.Sync(position, isPlaying, rate);
+            _clock?.Sync(snapshot);
             if (_clock is not null)
                 _overlay?.Tick(_clock.Position);
         });
