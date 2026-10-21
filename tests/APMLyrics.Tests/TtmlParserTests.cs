@@ -93,4 +93,126 @@ public class TtmlParserTests
         var doc = TtmlParser.Parse("x", ttml);
         Assert.Equal("Verse", doc.Lines[0].Part);
     }
+
+    [Fact]
+    public void Timed_document_is_reported_as_line_timed()
+    {
+        var doc = TtmlParser.Parse("AP_1", Doc);
+        Assert.Equal(LyricsTiming.Line, doc.Timing);
+    }
+
+    [Fact]
+    public void Untimed_document_is_not_claimed_as_synchronized()
+    {
+        // The real observed shape for Pasti Ada Jalan: itunes:timing="None",
+        // paragraphs with no begin/end anywhere.
+        var ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml" xmlns:itunes="http://music.apple.com/lyric-ttml-internal" itunes:timing="None">
+          <body>
+            <div><p>static line one</p><p>static line two</p></div>
+          </body>
+        </tt>
+        """;
+
+        var doc = TtmlParser.Parse("GE_1", ttml);
+
+        Assert.Equal(LyricsTiming.None, doc.Timing);
+        Assert.Equal(2, doc.Lines.Count);
+        Assert.Equal("static line one", doc.Lines[0].Text);
+    }
+
+    [Fact]
+    public void Missing_timestamps_without_a_timing_attribute_are_untimed()
+    {
+        var ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml"><body>
+          <div><p>no timestamps at all</p></div>
+        </body></tt>
+        """;
+
+        var doc = TtmlParser.Parse("GE_2", ttml);
+        Assert.Equal(LyricsTiming.None, doc.Timing);
+    }
+
+    [Fact]
+    public void Mixed_timed_and_untimed_paragraphs_are_not_claimed_as_synchronized()
+    {
+        var ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml"><body>
+          <div>
+            <p begin="1" end="2">timed</p>
+            <p>untimed</p>
+          </div>
+        </body></tt>
+        """;
+
+        var doc = TtmlParser.Parse("AP_9", ttml);
+        Assert.Equal(LyricsTiming.None, doc.Timing);
+    }
+
+    [Fact]
+    public void Whitespace_spacers_do_not_make_a_timed_document_mixed()
+    {
+        var ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml"><body>
+          <div>
+            <p begin="1" end="2">timed</p>
+            <p begin="2" end="3">   </p>
+            <p begin="3" end="4">also timed</p>
+          </div>
+        </body></tt>
+        """;
+
+        var doc = TtmlParser.Parse("AP_10", ttml);
+        Assert.Equal(LyricsTiming.Line, doc.Timing);
+    }
+
+    [Fact]
+    public void Non_finite_timestamp_is_a_format_failure()
+    {
+        var ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml"><body>
+          <div><p begin="NaN" end="2">broken</p></div>
+        </body></tt>
+        """;
+
+        Assert.Throws<FormatException>(() => TtmlParser.Parse("AP_11", ttml));
+    }
+
+    [Fact]
+    public void Negative_timestamp_is_a_format_failure()
+    {
+        var ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml"><body>
+          <div><p begin="-5" end="2">broken</p></div>
+        </body></tt>
+        """;
+
+        Assert.Throws<FormatException>(() => TtmlParser.Parse("AP_12", ttml));
+    }
+
+    [Fact]
+    public void Overflowing_timestamp_is_a_format_failure()
+    {
+        var ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml"><body>
+          <div><p begin="999999999999" end="2">broken</p></div>
+        </body></tt>
+        """;
+
+        Assert.Throws<FormatException>(() => TtmlParser.Parse("AP_13", ttml));
+    }
+
+    [Fact]
+    public void End_never_precedes_begin()
+    {
+        var ttml = """
+        <tt xmlns="http://www.w3.org/ns/ttml"><body>
+          <div><p begin="10" end="8">reversed</p></div>
+        </body></tt>
+        """;
+
+        var doc = TtmlParser.Parse("AP_14", ttml);
+        Assert.True(doc.Lines[0].End >= doc.Lines[0].Begin);
+    }
 }
