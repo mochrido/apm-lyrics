@@ -19,6 +19,13 @@ public interface ICatalogClient
 
     /// <summary>Finds a track by name through the iTunes search API.</summary>
     Task<TrackInfo?> SearchAsync(string title, string artist, CancellationToken ct);
+
+    /// <summary>
+    /// Reports what is already known without any request. True means the answer
+    /// is settled, including a cached negative (info is then null); false means
+    /// it has never been looked up.
+    /// </summary>
+    bool TryGetCached(string lyricsId, out TrackInfo? info);
 }
 
 /// <summary>
@@ -80,6 +87,12 @@ public sealed class CatalogClient : ICatalogClient
         return id.Length > 0 && id.All(char.IsAsciiDigit) ? id : null;
     }
 
+    public bool TryGetCached(string lyricsId, out TrackInfo? info)
+    {
+        lock (_gate)
+            return _memory.TryGetValue(lyricsId, out info);
+    }
+
     public async Task<TrackInfo?> LookupAsync(string lyricsId, CancellationToken ct)
     {
         lock (_gate)
@@ -113,6 +126,11 @@ public sealed class CatalogClient : ICatalogClient
                 info = Parse(await client.GetStringAsync(url, ct));
             }
             completed = true; // set on the success path only, never in the catch
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Caller superseded this work; a cancelled request is not a miss.
+            throw;
         }
         catch (Exception ex)
         {
@@ -195,6 +213,10 @@ public sealed class CatalogClient : ICatalogClient
                 }
             }
             completed = true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

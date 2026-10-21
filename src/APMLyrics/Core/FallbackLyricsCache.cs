@@ -120,7 +120,7 @@ public sealed class FallbackLyricsCache
             Source = "LRCLIB",
             ProviderId = candidate.Id,
             Lines = doc.Lines
-                .Select(l => new CacheLine
+                .Select(l => (CacheLine?)new CacheLine
                 {
                     BeginSeconds = l.Begin.TotalSeconds,
                     EndSeconds = l.End.TotalSeconds,

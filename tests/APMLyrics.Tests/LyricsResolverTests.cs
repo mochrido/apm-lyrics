@@ -36,6 +36,9 @@ public class LyricsResolverTests
             SearchQuery = (title, artist);
             return Task.FromResult(SearchResult);
         }
+
+        public bool TryGetCached(string lyricsId, out TrackInfo? info)
+            => Answers.TryGetValue(lyricsId, out info);
     }
 
     [Fact]
@@ -193,5 +196,116 @@ public class LyricsResolverTests
         var doc = await resolver.ResolveAsync(track, CancellationToken.None);
 
         Assert.True(doc is null || doc.Lines.Count > 0);
+    }
+
+    [Fact]
+    public void Cached_resolution_uses_known_metadata_without_searching()
+    {
+        var cache = new FakeCache();
+        cache.Candidates.Add(new Candidate("dan.json", "AP_1872239911", DanTtml));
+        var catalog = new FakeCatalog();
+        catalog.Answers["AP_1872239911"] =
+            new TrackInfo("Dan", "Noah Kahan", TimeSpan.FromSeconds(306.0));
+
+        var resolver = new LyricsResolver(cache, catalog);
+        var track = new Track("Dan", "Noah Kahan - The Great Divide", "The Great Divide", TimeSpan.FromSeconds(306.0), true);
+
+        var result = resolver.ResolveCached(track);
+
+        Assert.Equal(LyricsResolutionKind.Synced, result.Kind);
+        Assert.NotNull(result.Document);
+        Assert.Null(catalog.SearchQuery); // no HTTP-capable call was made
+    }
+
+    [Fact]
+    public void Cached_resolution_is_a_miss_when_metadata_was_never_looked_up()
+    {
+        var cache = new FakeCache();
+        cache.Candidates.Add(new Candidate("dan.json", "AP_1872239911", DanTtml));
+        var catalog = new FakeCatalog();
+
+        var resolver = new LyricsResolver(cache, catalog);
+        var track = new Track("Dan", "Noah Kahan - The Great Divide", "The Great Divide", TimeSpan.FromSeconds(306.0), true);
+
+        Assert.Equal(LyricsResolutionKind.NotFound, resolver.ResolveCached(track).Kind);
+    }
+
+    [Fact]
+    public async Task An_identified_untimed_file_resolves_as_unsynced()
+    {
+        var cache = new FakeCache();
+        cache.Candidates.Add(new Candidate("static.json", "AP_1867164174", """
+        <tt xmlns="http://www.w3.org/ns/ttml" xml:lang="id"><body>
+          <div><p>baris satu</p><p>baris dua</p></div>
+        </body></tt>
+        """));
+        var catalog = new FakeCatalog();
+        catalog.Answers["AP_1867164174"] =
+            new TrackInfo("Pasti Ada Jalan", "Perunggu", TimeSpan.FromSeconds(139));
+
+        var resolver = new LyricsResolver(cache, catalog);
+        var track = new Track("Pasti Ada Jalan", "Perunggu - Pasti Ada Jalan - Single", "Pasti Ada Jalan", TimeSpan.FromSeconds(139), true);
+
+        var result = await resolver.ResolveLocalAsync(track, CancellationToken.None);
+
+        Assert.Equal(LyricsResolutionKind.Unsynced, result.Kind);
+        Assert.False(result.Document!.IsSynced);
+        Assert.Equal(2, result.Document.Lines.Count);
+    }
+
+    [Fact]
+    public async Task An_unidentified_untimed_file_stays_a_miss()
+    {
+        var cache = new FakeCache();
+        cache.Candidates.Add(new Candidate("static.json", "MX_1-2", """
+        <tt xmlns="http://www.w3.org/ns/ttml" xml:lang="id"><body>
+          <div><p>baris satu</p></div>
+        </body></tt>
+        """));
+        var catalog = new FakeCatalog();
+
+        var resolver = new LyricsResolver(cache, catalog);
+        var track = new Track("Pasti Ada Jalan", "Perunggu - Pasti Ada Jalan - Single", "Pasti Ada Jalan", TimeSpan.FromSeconds(139), true);
+
+        var result = await resolver.ResolveLocalAsync(track, CancellationToken.None);
+
+        Assert.Equal(LyricsResolutionKind.NotFound, result.Kind);
+    }
+
+    [Fact]
+    public async Task Catalog_cancellation_propagates_instead_of_becoming_a_miss()
+    {
+        var cache = new FakeCache();
+        cache.Candidates.Add(new Candidate("dan.json", "AP_1872239911", DanTtml));
+
+        var resolver = new LyricsResolver(cache, new CancellingCatalog());
+        var track = new Track("Dan", "Noah Kahan - The Great Divide", "The Great Divide", TimeSpan.FromSeconds(306.0), true);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => resolver.ResolveLocalAsync(track, cts.Token));
+    }
+
+    private sealed class CancellingCatalog : ICatalogClient
+    {
+        public Task<TrackInfo?> LookupAsync(string lyricsId, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult<TrackInfo?>(null);
+        }
+
+        public Task<TrackInfo?> SearchAsync(string title, string artist, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult<TrackInfo?>(null);
+        }
+
+        public bool TryGetCached(string lyricsId, out TrackInfo? info)
+        {
+            info = null;
+            return false;
+        }
     }
 }

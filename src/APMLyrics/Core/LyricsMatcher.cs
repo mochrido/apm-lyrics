@@ -86,6 +86,11 @@ public static class LyricsMatcher
 
     public static Candidate? Choose(
         Track track, IReadOnlyList<ResolvedCandidate> candidates, DateTimeOffset? trackStart = null)
+        => ChooseResolved(track, candidates, trackStart)?.Candidate;
+
+    /// <summary>Same decision, but reports whether a name identified the file.</summary>
+    public static ResolvedCandidate? ChooseResolved(
+        Track track, IReadOnlyList<ResolvedCandidate> candidates, DateTimeOffset? trackStart = null)
     {
         var title = TrackIdentity.Normalize(track.Title);
         var artist = TrackIdentity.Normalize(TrackIdentity.SplitArtist(track.Artist));
@@ -106,7 +111,7 @@ public static class LyricsMatcher
             .FirstOrDefault();
 
         if (exact is not null && (!durationKnown || WithinTolerance(exact, track)))
-            return exact.Candidate;
+            return exact;
 
         // Second tier: a file we cannot resolve by name, accepted only when it
         // appeared as this track started and its length agrees with SMTC.
@@ -121,12 +126,21 @@ public static class LyricsMatcher
                 .FirstOrDefault();
 
             if (fresh is not null)
-                return fresh.Candidate;
+                return fresh;
         }
 
         return null;
     }
 
     private static bool WithinTolerance(ResolvedCandidate candidate, Track track)
-        => Math.Abs((candidate.BodyDuration - track.Duration).TotalSeconds) <= DurationTolerance.TotalSeconds;
+    {
+        // A body with no usable dur cannot disagree with the playing length, and
+        // the name already proved identity. Only a concrete, conflicting length
+        // disqualifies an identified file.
+        if (candidate.BodyDuration <= TimeSpan.Zero)
+            return true;
+
+        return Math.Abs((candidate.BodyDuration - track.Duration).TotalSeconds)
+               <= DurationTolerance.TotalSeconds;
+    }
 }

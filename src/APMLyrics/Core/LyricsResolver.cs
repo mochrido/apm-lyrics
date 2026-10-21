@@ -23,35 +23,126 @@ public sealed class LyricsResolver
         _catalog = catalog;
     }
 
+    /// <summary>Legacy shape kept for callers that only need the document.</summary>
     public async Task<LyricsDoc?> ResolveAsync(Track track, CancellationToken ct, DateTimeOffset? trackStart = null)
+        => (await ResolveLocalAsync(track, ct, trackStart)).Document;
+
+    /// <summary>
+    /// Answers from already-known catalog metadata only, with no network at all.
+    /// This is the fast path that decides whether an online fallback is needed,
+    /// so it must never block on a lookup.
+    /// </summary>
+    public LyricsResolution ResolveCached(Track track, DateTimeOffset? trackStart = null)
     {
         var candidates = _cache.Scan();
         if (candidates.Count == 0)
-            return null;
+            return new LyricsResolution(LyricsResolutionKind.NotFound);
+
+        var resolved = new List<ResolvedCandidate>(candidates.Count);
+        foreach (var candidate in candidates)
+        {
+            _catalog.TryGetCached(candidate.LyricsId, out var info);
+            resolved.Add(new ResolvedCandidate(
+                candidate, info, BodyDuration(candidate.Ttml), WrittenAt(candidate.FilePath)));
+        }
+
+        return Classify(LyricsMatcher.ChooseResolved(track, resolved, trackStart));
+    }
+
+    /// <summary>
+    /// Full local resolution, including catalog lookups and the name search that
+    /// can identify files whose id the catalog cannot resolve. Bounded by the
+    /// caller's deadline; cancellation propagates.
+    /// </summary>
+    public async Task<LyricsResolution> ResolveLocalAsync(
+        Track track, CancellationToken ct, DateTimeOffset? trackStart = null)
+    {
+        var candidates = _cache.Scan();
+        if (candidates.Count == 0)
+            return new LyricsResolution(LyricsResolutionKind.NotFound);
 
         var resolved = new List<ResolvedCandidate>(candidates.Count);
         foreach (var candidate in candidates)
         {
             ct.ThrowIfCancellationRequested();
 
+            // A candidate whose id is already known needs no request, and one
+            // whose length is clearly incompatible can never match, so it does
+            // not deserve a lookup either. That keeps historic cache files from
+            // delaying the answer.
+            if (_catalog.TryGetCached(candidate.LyricsId, out var known))
+            {
+                var body = BodyDuration(candidate.Ttml);
+                if (!CouldMatch(track, known, body))
+                    continue;
+
+                resolved.Add(new ResolvedCandidate(
+                    candidate, known, body, WrittenAt(candidate.FilePath)));
+                continue;
+            }
+
             var info = await _catalog.LookupAsync(candidate.LyricsId, ct);
-            resolved.Add(new ResolvedCandidate(candidate, info, BodyDuration(candidate.Ttml), WrittenAt(candidate.FilePath)));
+            resolved.Add(new ResolvedCandidate(
+                candidate, info, BodyDuration(candidate.Ttml), WrittenAt(candidate.FilePath)));
         }
+
+        if (resolved.Count == 0)
+            return new LyricsResolution(LyricsResolutionKind.NotFound);
 
         await AttachSearchInfoAsync(track, resolved, ct);
 
-        var chosen = LyricsMatcher.Choose(track, resolved, trackStart);
-        if (chosen is null)
-            return null;
+        return Classify(LyricsMatcher.ChooseResolved(track, resolved, trackStart));
+    }
 
+    /// <summary>
+    /// False only when the metadata is complete enough to prove the file cannot
+    /// describe the playing track. Unknown values never disqualify.
+    /// </summary>
+    private static bool CouldMatch(Track track, TrackInfo? info, TimeSpan bodyDuration)
+    {
+        if (info is null)
+            return true;
+
+        if (TrackIdentity.Normalize(info.Title) != TrackIdentity.Normalize(track.Title))
+            return false;
+
+        var drift = (info.Duration - track.Duration).Duration();
+        var bodyDrift = bodyDuration <= TimeSpan.Zero
+            ? TimeSpan.Zero
+            : (bodyDuration - track.Duration).Duration();
+        var tolerance = LyricsMatcher.DurationTolerance;
+
+        // Either the catalog's own length or the file's body may be the reliable
+        // one; a match is possible when either agrees.
+        return track.Duration <= TimeSpan.Zero
+               || drift <= tolerance
+               || bodyDrift <= tolerance;
+    }
+
+    private static LyricsResolution Classify(ResolvedCandidate? chosen)
+    {
+        if (chosen is null)
+            return new LyricsResolution(LyricsResolutionKind.NotFound);
+
+        LyricsDoc document;
         try
         {
-            return TtmlParser.Parse(chosen.LyricsId, chosen.Ttml);
+            document = TtmlParser.Parse(chosen.Candidate.LyricsId, chosen.Candidate.Ttml);
         }
         catch (FormatException)
         {
-            return null; // a malformed document is a miss, not a crash
+            return new LyricsResolution(LyricsResolutionKind.NotFound); // miss, not a crash
         }
+
+        if (document.IsSynced)
+            return new LyricsResolution(LyricsResolutionKind.Synced, document, "Apple");
+
+        // Untimed lyrics may only be shown as lyrics when a name identified the
+        // file. Arrival timing alone is enough to trust timestamps, never to
+        // claim that this text belongs to this recording.
+        return chosen.Info is not null
+            ? new LyricsResolution(LyricsResolutionKind.Unsynced, document, "Apple")
+            : new LyricsResolution(LyricsResolutionKind.NotFound);
     }
 
     /// <summary>
