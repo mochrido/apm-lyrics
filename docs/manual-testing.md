@@ -10,7 +10,7 @@ Run once per release on a real Apple Music session. Record the date and result.
 - [ ] No progress bar is drawn under the current line.
 - [ ] Play a song with lyrics: the current line advances in time with the audio.
 - [ ] Skip to the next track: the previous lines clear immediately, a loading state shows, then the new lines appear.
-- [ ] Play a song with no lyrics: "No lyrics for this song" or the title state shows, never the previous song.
+- [ ] Play a song with no lyrics: the title plus `No matching synced lyrics found` shows, never the previous song.
 - [ ] Pause: the highlight stops advancing. Resume: it continues from the right place.
 - [ ] Toggle click-through from the tray: clicks pass through the overlay to the window below.
 - [ ] With click-through on, use the tray menu to turn it off: the overlay is clickable again.
@@ -31,6 +31,8 @@ Run once per release on a real Apple Music session. Record the date and result.
 - [ ] Play "Pasti Ada Jalan" (Perunggu): Apple's own lyrics are static; the overlay says `Only unsynced lyrics available` rather than scrolling text.
 - [ ] Play a song with a validated online fallback: lyrics advance in time with the vocals.
 - [ ] Play a song with no lyrics anywhere: overlay says `No matching synced lyrics found`.
+- [ ] Play a song with only untimed lyrics (Apple or online): the overlay says `Only unsynced lyrics available` and never scrolls or highlights plain text.
+- [ ] With the network blocked and no cached fallback: overlay says `Couldn't check online lyrics`, and recovers on its own if connectivity returns within about a minute.
 - [ ] Disconnect the network and replay a previously resolved fallback song: lyrics still appear from cache.
 - [ ] With Apple Music closed, the overlay shows `Nothing playing`.
 - [ ] Restart Apple Music and play the same song again: lyrics reappear (same-song reconnect).

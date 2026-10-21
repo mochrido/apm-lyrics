@@ -17,11 +17,12 @@ public partial class App : Application
     private AppleLyricsCache? _cache;
     private CatalogClient? _catalog;
     private LyricsResolver? _resolver;
+    private LyricsCoordinator? _coordinator;
+    private LrclibClient? _lrclib;
     private PlaybackClock? _clock;
     private AppSettings _settings = AppSettings.Default;
-    private CancellationTokenSource? _resolveCts;
     private DispatcherTimer? _saveTimer;
-    private DateTimeOffset? _trackStartedAt;
+    private TimeSpan _coordinatorDuration = TimeSpan.MinValue;
     private UpdateService? _updates;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -90,14 +91,33 @@ public partial class App : Application
         _cache = new AppleLyricsCache();
         _catalog = new CatalogClient();
         _resolver = new LyricsResolver(_cache, _catalog);
+        _lrclib = new LrclibClient();
         _clock = new PlaybackClock(new SystemTimeSource());
+
+        _coordinator = new LyricsCoordinator(
+            (track, start) => _resolver!.ResolveCached(track, start),
+            (track, start, ct) => _resolver!.ResolveLocalAsync(track, ct, start),
+            (track, ct) => _lrclib!.ResolveAsync(track, ct));
+        _coordinator.Changed += (generation, resolution) =>
+        {
+            // Raised on a worker thread: the overlay is dispatcher-affine.
+            Dispatcher.InvokeAsync(() =>
+            {
+                // Re-check inside the dispatcher: a newer track may have been
+                // adopted while this callback was queued.
+                if (_playback is null || generation != _playback.Generation)
+                    return;
+
+                ApplyResolution(resolution);
+            });
+        };
 
         _cache.NewFile += _ =>
         {
-            // Apple writes the lyric file mid-track: re-resolve so it appears
-            // without waiting for the next song. This fires on the watcher's
-            // thread, so hop to the UI thread before touching anything.
-            Dispatcher.InvokeAsync(() => ReResolve());
+            // Apple writes the lyric file mid-track: re-resolve locally so it
+            // appears without waiting for the next song. This fires on the
+            // watcher's thread, so hop to the UI thread before touching anything.
+            Dispatcher.InvokeAsync(() => _coordinator?.NotifyCacheChanged());
         };
 
         _playback = new SmtcPlaybackSource();
@@ -139,9 +159,15 @@ public partial class App : Application
             // the previous song can never be applied to this one.
             _clock?.Reset(generation);
             _overlay?.Apply(track); // clears lines immediately, no stale lyrics
-            _trackStartedAt = track is null ? null : DateTimeOffset.UtcNow;
-            if (track is not null)
-                ReResolve();
+
+            if (track is null)
+            {
+                _coordinator?.Stop();
+                return;
+            }
+
+            _coordinatorDuration = track.Duration;
+            _coordinator?.Start(track, generation);
         });
     }
 
@@ -155,45 +181,45 @@ public partial class App : Application
             _clock?.Sync(snapshot);
             if (_clock is not null)
                 _overlay?.Tick(_clock.Position);
+
+            // SMTC reports the length a moment after a track starts, and
+            // occasionally reports zero mid-song. Only a real length is worth
+            // acting on: a transient zero must not cancel a good resolution.
+            var track = _playback?.Current;
+            if (track is null
+                || snapshot.Generation != _playback!.Generation
+                || track.Duration <= TimeSpan.Zero
+                || track.Duration == _coordinatorDuration)
+                return;
+
+            _coordinatorDuration = track.Duration;
+            _coordinator?.UpdateTrack(track, snapshot.Generation);
         });
     }
 
-    private async void ReResolve()
+    /// <summary>
+    /// Renders one resolution outcome. Unsynced text is deliberately shown as a
+    /// status, never as scrollable lyrics: without timestamps it cannot follow
+    /// playback.
+    /// </summary>
+    private void ApplyResolution(LyricsResolution resolution)
     {
-        if (_resolver is null || _playback?.Current is not { } track || _overlay is null)
+        if (_overlay is null)
             return;
 
-        // A newer track supersedes this resolution: cancel the older lookup so its
-        // result cannot land on top of the newer one.
-        _resolveCts?.Cancel();
-        _resolveCts = new CancellationTokenSource();
-        var token = _resolveCts.Token;
-        var startedAt = _trackStartedAt;
-
-        try
+        switch (resolution.Kind)
         {
-            var doc = await _resolver.ResolveAsync(track, token, startedAt);
-            if (token.IsCancellationRequested)
-                return;
+            case LyricsResolutionKind.Synced when resolution.Document is { IsSynced: true } doc:
+                // Hand the clock's current position in with the document so the
+                // opening line reflects any seek that just happened.
+                _overlay.Apply(doc, _clock?.Position);
+                break;
 
-            // Apply/NoLyrics mutate WPF text, and the continuation after the await
-            // is not guaranteed to resume on the UI thread. Awaited so the queued
-            // operation is not an unobserved fire-and-forget (CS4014) in this
-            // async method; the lambda still runs on the UI thread either way.
-            await Dispatcher.InvokeAsync(() =>
-            {
-                if (token.IsCancellationRequested)
-                    return;
-
-                if (doc is null)
-                    _overlay.NoLyrics();
-                else
-                    _overlay.Apply(doc);
-            });
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer track won; this resolution is obsolete.
+            default:
+                // Loading, unsynced-only, offline and miss all render as a
+                // status line; untimed text must never enter the highlight.
+                _overlay.Status(LyricsStatus.For(resolution));
+                break;
         }
     }
 
@@ -204,6 +230,7 @@ public partial class App : Application
         // the process, then the watcher and the poll loop.
         _saveTimer?.Stop();
         AppSettingsStore.Save(AppSettingsStore.DefaultPath, _settings);
+        _coordinator?.Dispose();
         _tray?.Dispose();
         _playback?.Dispose();
         _cache?.Dispose();

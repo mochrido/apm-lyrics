@@ -89,12 +89,17 @@ public partial class OverlayWindow : Window
         Panel.Show(null, _trackTitle, _trackArtist, track is not null);
     }
 
-    public void Apply(LyricsDoc? doc)
+    public void Apply(LyricsDoc? doc, TimeSpan? position = null)
     {
-        Panel.Show(doc, _trackTitle, _trackArtist, loading: false);
+        Panel.Show(doc, _trackTitle, _trackArtist, loading: false, status: null, position: position);
     }
 
-    public void NoLyrics() => Panel.Show(null, _trackTitle, _trackArtist, loading: false);
+    /// <summary>
+    /// A non-renderable state, e.g. loading or "only unsynced lyrics". The status
+    /// line replaces the lyric body but keeps the song title above it.
+    /// </summary>
+    public void Status(string? message)
+        => Panel.Show(null, _trackTitle, _trackArtist, loading: false, message);
 
     public void Tick(TimeSpan position) => Panel.Tick(position);
 

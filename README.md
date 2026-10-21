@@ -87,9 +87,17 @@ from?" is the first question most people ask.
    disk. APM Lyrics scans that cache, works out which file belongs to the playing track, and
    parses the timings.
 
-3. **Draw the right line.** Each lyric line carries a start and end time. A small interpolating
-   clock smooths the coarse four-per-second updates from Windows, and the overlay highlights
-   whichever line covers the current moment.
+3. **Fall back to LRCLIB when Apple has nothing timed.** If Apple's cache has no timed lyrics for
+   the track, the app asks [LRCLIB](https://lrclib.net) for its lyrics, sending only the track
+   title, artist, album and duration. A candidate is accepted only when title and artist agree,
+   the length is within two seconds, and the timestamps are real. Accepted results are cached
+   locally, so the song still works offline next time. If nothing passes those checks, the overlay
+   says so instead of showing lyrics for the wrong recording.
+
+4. **Draw the right line.** Each lyric line carries a start and end time. A small interpolating
+   clock smooths the coarse four-per-second updates from Windows and re-anchors on every seek, and
+   the overlay highlights whichever line covers the current moment. Lyrics without timestamps are
+   never shown as moving text: the overlay says "Only unsynced lyrics available" instead.
 
 ### Matching a song to its lyrics
 
@@ -110,9 +118,13 @@ Two details caused real bugs during development, and are worth knowing if you re
 
 ### What it deliberately does not do
 
-Global hotkeys, launching at login, lyric search for songs Apple has not cached, Spotify and
-other players, and custom themes are all out of scope. The design document lists them so they
-read as decisions rather than oversights.
+Global hotkeys, launching at login, Spotify and other players, custom themes, and manual
+timing-offset controls are all out of scope. The design document lists them so they read as
+decisions rather than oversights.
+
+It also does **not** claim a match it cannot verify. A song whose lyrics are only known as plain
+text shows a status message; a provider outage shows a different one; and when several online
+candidates disagree it shows nothing rather than picking one.
 
 ## Project layout
 

@@ -20,6 +20,7 @@ public partial class LyricPanel : UserControl
     private string _trackTitle = string.Empty;
     private string _trackArtist = string.Empty;
     private bool _loading;
+    private string? _status;
     private TimeSpan _position;
     private int _lastIndex = int.MinValue;
     private double _fittedSize;
@@ -41,13 +42,31 @@ public partial class LyricPanel : UserControl
         Render(animate: false);
     }
 
-    /// <summary>Content: a document to show, or one of the three empty states.</summary>
-    public void Show(LyricsDoc? doc, string title, string artist, bool loading)
+    /// <summary>
+    /// Content: a timed document to show, or an empty/status state. An untimed
+    /// document is never rendered here: without timestamps it cannot follow
+    /// playback, so the caller passes a status message instead.
+    /// </summary>
+    public void Show(
+        LyricsDoc? doc,
+        string title,
+        string artist,
+        bool loading,
+        string? status = null,
+        TimeSpan? position = null)
     {
-        _doc = doc;
+        _doc = doc is { IsSynced: true } ? doc : null;
         _trackTitle = title;
         _trackArtist = TrackIdentity.SplitArtist(artist);
         _loading = loading;
+        _status = status;
+
+        // A document can arrive right after a seek. Adopt the already-corrected
+        // playback position before the first render, or the previous document's
+        // stale position would highlight the wrong opening line.
+        if (position is not null)
+            _position = position.Value;
+
         _lastIndex = int.MinValue;
         Render(animate: false);
     }
@@ -80,6 +99,8 @@ public partial class LyricPanel : UserControl
             string text;
             if (string.IsNullOrEmpty(_trackTitle))
                 text = "Nothing playing";
+            else if (_status is not null)
+                text = _trackTitle + (string.IsNullOrEmpty(_trackArtist) ? "" : "\n" + _trackArtist) + "\n" + _status;
             else if (_loading)
                 text = _trackTitle + (string.IsNullOrEmpty(_trackArtist) ? "" : "\n" + _trackArtist);
             else
