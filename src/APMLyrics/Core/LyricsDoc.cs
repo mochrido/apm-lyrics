@@ -24,3 +24,32 @@ public sealed record LyricsDoc(string LyricsId, string? Lang, IReadOnlyList<Lyri
 
     public bool IsSynced => Timing == LyricsTiming.Line;
 }
+
+/// <summary>What a resolution attempt concluded. Ordering matters for UI precedence.</summary>
+public enum LyricsResolutionKind
+{
+    /// <summary>Still looking; keep the loading state.</summary>
+    Loading,
+
+    /// <summary>A validated, line-timed document is available.</summary>
+    Synced,
+
+    /// <summary>Lyrics were found and identified, but only as untimed text.</summary>
+    Unsynced,
+
+    /// <summary>The search completed and found nothing usable.</summary>
+    NotFound,
+
+    /// <summary>The provider could not be reached; a retry may succeed later.</summary>
+    NetworkUnavailable,
+
+    /// <summary>The track's duration is not known yet, so no online match can be verified.</summary>
+    PendingDuration,
+}
+
+/// <summary>One resolution outcome, with the document when there is one.</summary>
+public sealed record LyricsResolution(
+    LyricsResolutionKind Kind,
+    LyricsDoc? Document = null,
+    string? Source = null);
+
