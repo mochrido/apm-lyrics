@@ -45,16 +45,27 @@ public sealed class LrclibClient
     private static readonly HttpClient Shared = new() { Timeout = RequestTimeout };
 
     private readonly HttpClient _client;
+    private readonly FallbackLyricsCache? _cache;
 
-    public LrclibClient(HttpClient client) => _client = client;
+    public LrclibClient(HttpClient client, FallbackLyricsCache? cache = null)
+    {
+        _client = client;
+        _cache = cache;
+    }
 
     /// <summary>Production client over a shared pooled connection.</summary>
-    public LrclibClient() : this(Shared) { }
+    public LrclibClient() : this(Shared, new FallbackLyricsCache(FallbackLyricsCache.DefaultDirectory)) { }
 
     public async Task<LyricsResolution> ResolveAsync(Track track, CancellationToken ct)
     {
         if (track.Duration <= TimeSpan.Zero)
             return new LyricsResolution(LyricsResolutionKind.PendingDuration);
+
+        // A validated local copy avoids the network entirely, including when the
+        // provider is down.
+        var cached = _cache?.Read(track);
+        if (cached is not null)
+            return new LyricsResolution(LyricsResolutionKind.Synced, cached, "LRCLIB cache");
 
         var artist = TrackIdentity.SplitArtist(track.Artist);
         if (string.IsNullOrWhiteSpace(track.Title) || string.IsNullOrWhiteSpace(artist))
@@ -82,7 +93,15 @@ public sealed class LrclibClient
             return new LyricsResolution(LyricsResolutionKind.NotFound);
         }
 
-        return Select(track, candidates);
+        var (resolution, winner) = Select(track, candidates);
+        if (resolution.Kind == LyricsResolutionKind.Synced
+            && resolution.Document is not null
+            && winner is not null)
+        {
+            _cache?.Write(track, winner, resolution.Document);
+        }
+
+        return resolution;
     }
 
     /// <summary>
@@ -90,7 +109,8 @@ public sealed class LrclibClient
     /// album; the timed payload is parsed before ranking so a plain or malformed
     /// submission cannot hide a usable one.
     /// </summary>
-    internal static LyricsResolution Select(Track track, IReadOnlyList<LrclibCandidate> candidates)
+    internal static (LyricsResolution Resolution, LrclibCandidate? Candidate) Select(
+        Track track, IReadOnlyList<LrclibCandidate> candidates)
     {
         var wantedTitle = RecordingIdentity.NormalizeTitle(track.Title);
         var wantedArtist = TrackIdentity.Normalize(TrackIdentity.SplitArtist(track.Artist));
@@ -121,7 +141,7 @@ public sealed class LrclibClient
         }
 
         if (eligible.Count == 0)
-            return new LyricsResolution(LyricsResolutionKind.NotFound);
+            return (new LyricsResolution(LyricsResolutionKind.NotFound), null);
 
         // Best rank: agreeing album first, then the closest duration.
         var best = eligible
@@ -159,8 +179,8 @@ public sealed class LrclibClient
 
         if (parsed.Count == 0)
         {
-            return new LyricsResolution(
-                sawPlain ? LyricsResolutionKind.Unsynced : LyricsResolutionKind.NotFound);
+            return (new LyricsResolution(
+                sawPlain ? LyricsResolutionKind.Unsynced : LyricsResolutionKind.NotFound), null);
         }
 
         // Equivalent submissions (same text and timing, different formatting)
@@ -171,11 +191,12 @@ public sealed class LrclibClient
             .ToList();
 
         if (distinct.Count > 1)
-            return new LyricsResolution(LyricsResolutionKind.NotFound);
+            return (new LyricsResolution(LyricsResolutionKind.NotFound), null);
 
         var winner = distinct[0].First();
-        return new LyricsResolution(
-            LyricsResolutionKind.Synced, winner.Document, "LRCLIB");
+        return (
+            new LyricsResolution(LyricsResolutionKind.Synced, winner.Document, "LRCLIB"),
+            winner.Candidate);
     }
 
     private static string PayloadKey(LyricsDoc doc)
